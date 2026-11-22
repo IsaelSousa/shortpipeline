@@ -3,6 +3,8 @@ name = "shortpipeline"
 version = "0.1.0"
 description = "Pipeline automático de YouTube Shorts com painel web"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "fastapi>=0.115",
     "uvicorn>=0.32",
