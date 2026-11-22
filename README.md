@@ -2,6 +2,8 @@
 
 # ShortPipeline
 
+[English](README.en.md) · **Português**
+
 Fábrica de vídeos para YouTube: gera **Shorts**, **vídeos longos** e **cortes** de vídeos longos de forma automática, para quantos canais você quiser, com um painel web que mostra em que etapa cada vídeo está e deixa configurar qual IA faz o quê.
 
 As IAs de texto e imagem rodam pelas **CLIs logadas com a sua conta** (`claude`, `codex` e `agy`), sem API key. A narração usa o ElevenLabs (com o Edge TTS, grátis, como reserva).
@@ -9,6 +11,19 @@ As IAs de texto e imagem rodam pelas **CLIs logadas com a sua conta** (`claude`,
 ```
 Ideia → Roteiro → Narração → Imagens → Capa → Legendas → Som → Render → Revisão → Publicação
 ```
+
+![Painel do pipeline: cada vídeo com a etapa em que está](docs/pipeline.png)
+
+## Telas
+
+| | |
+|---|---|
+| ![Vídeo pronto com as cenas geradas e os efeitos sonoros de cada uma](docs/video-cenas.png) | ![Revisão antes de publicar, com as notas do revisor de roteiro](docs/video-roteiro.png) |
+| **Vídeo**: player, etapas com tempo, cenas com efeitos de som e ambiente | **Aprovação**: título, descrição, publicar, agendar ou enviar como rascunho; notas do revisor |
+| ![Analytics do canal](docs/analytics.png) | ![Configuração de direção criativa do canal](docs/canais.png) |
+| **Analytics**: views, retenção, inscritos, fontes de tráfego e o que o canal aprendeu | **Canais**: modelos por etapa, voz, prompts e direção criativa |
+
+<sub>Capturas de um ambiente de demonstração: canais, vídeos e números fictícios.</sub>
 
 ## O que ele faz
 
