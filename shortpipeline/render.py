@@ -1,0 +1,402 @@
+"""Montagem do vídeo com ffmpeg: Ken Burns por cena, transições, legendas ASS, música."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import random
+from pathlib import Path
+
+from . import config
+from .providers import ProviderError, run
+
+W, H, FPS = 1080, 1920, 30
+XFADE = 0.35  # duração da transição entre cenas, em segundos
+
+
+async def ffprobe_duration(path: Path) -> float:
+    code, out, err = await run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                                "-of", "json", str(path)], timeout=60)
+    if code != 0:
+        raise ProviderError(f"ffprobe falhou em {path.name}: {err[-300:]}")
+    return float(json.loads(out)["format"]["duration"])
+
+
+async def ffmpeg(args: list[str], timeout: int = 900) -> None:
+    code, _, err = await run(["ffmpeg", "-y", "-hide_banner", "-v", "error", *args], timeout=timeout)
+    if code != 0:
+        raise ProviderError(f"ffmpeg falhou: {err[-800:]}")
+
+
+# ------------------------------------------------------------------ áudio
+async def build_narration(clips: list[Path], gap: float, dest: Path) -> list[float]:
+    """Concatena as narrações das cenas com uma pausa entre elas. Devolve a duração de cada cena."""
+    durations = []
+    inputs, filters = [], []
+    for i, clip in enumerate(clips):
+        d = await ffprobe_duration(clip)
+        pad = gap if i < len(clips) - 1 else 0.6
+        durations.append(d + pad)
+        inputs += ["-i", str(clip)]
+        filters.append(f"[{i}:a]aresample=44100,aformat=channel_layouts=mono,apad=pad_dur={pad}[a{i}]")
+    filters.append("".join(f"[a{i}]" for i in range(len(clips))) + f"concat=n={len(clips)}:v=0:a=1[out]")
+    await ffmpeg([*inputs, "-filter_complex", ";".join(filters), "-map", "[out]", "-c:a", "pcm_s16le", str(dest)])
+    return durations
+
+
+# ------------------------------------------------------------------ legendas
+def _ass_color(hex_color: str) -> str:
+    h = hex_color.lstrip("#")
+    if len(h) != 6:
+        h = "FFFFFF"
+    return f"&H00{h[4:6]}{h[2:4]}{h[0:2]}".upper()
+
+
+def _ts(t: float) -> str:
+    t = max(0.0, t)
+    h, rem = divmod(t, 3600)
+    m, s = divmod(rem, 60)
+    return f"{int(h)}:{int(m):02d}:{s:05.2f}"
+
+
+def _clean(word: str) -> str:
+    return word.replace("{", "").replace("}", "").replace("\\", "")
+
+
+def build_ass(words: list[dict], video: dict, dest: Path, frame: tuple[int, int] = (W, H),
+              size: int | None = None) -> None:
+    """Legenda estilo karaokê: blocos de N palavras, a palavra falada fica colorida e maior."""
+    fw, fh = frame
+    landscape = fw > fh
+    font = video.get("caption_font") or "Anton"
+    size = int(size or video.get("caption_size") or 92)
+    margin_v = 90 if landscape else 600
+    base = _ass_color(video.get("caption_color") or "#FFFFFF")
+    hi = _ass_color(video.get("highlight_color") or "#FFD400")
+    upper = video.get("caption_uppercase", True)
+    per = max(1, int(video.get("words_per_caption") or 3))
+
+    header = f"""[Script Info]
+ScriptType: v4.00+
+PlayResX: {fw}
+PlayResY: {fh}
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Cap,{font},{size},{base},{base},&H00000000,&H96000000,0,0,0,0,100,100,1,0,1,{max(4, size // 14)},4,2,70,70,{margin_v},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+    # Agrupa em blocos, quebrando também em pausas longas e pontuação.
+    groups: list[list[dict]] = []
+    cur: list[dict] = []
+    for i, w in enumerate(words):
+        cur.append(w)
+        nxt = words[i + 1] if i + 1 < len(words) else None
+        long_pause = nxt is not None and nxt["start"] - w["end"] > 0.45
+        punct = w["text"].rstrip()[-1:] in ".!?,;:"
+        if len(cur) >= per or long_pause or punct or nxt is None:
+            groups.append(cur)
+            cur = []
+
+    lines = []
+    for gi, g in enumerate(groups):
+        # o bloco fica na tela até o próximo começar (sem piscar em pausas curtas)
+        next_start = groups[gi + 1][0]["start"] if gi + 1 < len(groups) else None
+        g_end = g[-1]["end"] + 0.7
+        if next_start is not None:
+            g_end = next_start if next_start - g[-1]["end"] < 1.2 else g[-1]["end"] + 0.5
+        for j, w in enumerate(g):
+            start = w["start"]
+            end = g[j + 1]["start"] if j + 1 < len(g) else g_end
+            parts = []
+            for k, x in enumerate(g):
+                t = _clean(x["text"].upper() if upper else x["text"])
+                if k == j:
+                    parts.append(f"{{\\c{hi}\\fscx112\\fscy112}}{t}{{\\c{base}\\fscx100\\fscy100}}")
+                else:
+                    parts.append(t)
+            pop = "{\\fad(40,0)}" if j == 0 else ""
+            lines.append(f"Dialogue: 0,{_ts(start)},{_ts(end)},Cap,,0,0,0,,{pop}{' '.join(parts)}")
+    dest.write_text(header + "\n".join(lines) + "\n", encoding="utf-8")
+
+
+# ------------------------------------------------------------------ vídeo
+def _motion(i: int, frames: int) -> tuple[str, str, str]:
+    """Movimentos de câmera alternados: zoom in, zoom out, pan lateral."""
+    step = 0.18 / max(frames, 1)
+    kind = i % 4
+    if kind == 0:   # zoom in central
+        return f"1+{step}*on", "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"
+    if kind == 1:   # zoom out
+        return f"1.18-{step}*on", "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"
+    if kind == 2:   # pan esquerda -> direita com zoom leve
+        return "1.12", f"(iw-iw/zoom)*on/{frames}", "ih/2-(ih/zoom/2)"
+    return "1.12", f"(iw-iw/zoom)*(1-on/{frames})", "ih/2-(ih/zoom/2)"
+
+
+SHOT_KINDS = ["push", "punch", "pan", "detail", "pullback"]
+
+
+def _shot(kind: str, frames: int, seed: int) -> tuple[str, str, str]:
+    """Enquadramentos tirados da mesma imagem: dão sensação de vários planos sem gastar outra geração."""
+    t = f"on/{max(frames, 1)}"
+    side = 0.33 if seed % 2 else 0.66
+    if kind == "punch":     # close no terço superior (rosto/objeto principal costuma estar lá)
+        return f"1.34+0.05*{t}", "iw/2-(iw/zoom/2)", "ih*0.38-(ih/zoom/2)"
+    if kind == "pan":       # plano médio atravessando
+        x = f"(iw-iw/zoom)*{t}" if seed % 2 else f"(iw-iw/zoom)*(1-{t})"
+        return "1.18", x, "ih/2-(ih/zoom/2)"
+    if kind == "detail":    # detalhe num dos terços
+        return f"1.55+0.04*{t}", f"iw*{side}-(iw/zoom/2)", "ih*0.5-(ih/zoom/2)"
+    if kind == "pullback":  # abre o plano
+        return f"1.25-0.12*{t}", "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"
+    return f"1+0.08*{t}", "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"  # push
+
+
+async def scene_clip(image: Path, duration: float, index: int, dest: Path, frame: tuple[int, int] = (W, H),
+                     shots: list[float] | None = None, shake: list[tuple[float, float]] | None = None) -> None:
+    """Uma cena. Com `shots` (durações), a imagem vira vários planos com corte seco entre eles;
+    `shake` são janelas (início, fim) em segundos relativos à cena com tremor de câmera."""
+    fw, fh = frame
+    total_frames = int(round(duration * FPS))
+    pre = f"scale={fw * 2}:{fh * 2}:force_original_aspect_ratio=increase,crop={fw * 2}:{fh * 2}"
+    if not shots or len(shots) < 2:
+        frames = total_frames
+        z, x, y = _motion(index, frames)
+        segs = [(z, x, y, frames, 0)]
+    else:
+        frames_list = [max(1, int(round(d * FPS))) for d in shots]
+        frames_list[-1] = max(1, total_frames - sum(frames_list[:-1]))
+        segs, start = [], 0
+        for j, fr in enumerate(frames_list):
+            kind = "push" if j == 0 else SHOT_KINDS[1 + (index + j) % (len(SHOT_KINDS) - 1)]
+            z, x, y = _shot(kind, fr, index + j)
+            segs.append((z, x, y, fr, start))
+            start += fr
+    parts, labels = [], []
+    for k, (z, x, y, fr, start) in enumerate(segs):
+        jx = jy = ""
+        for a, b in shake or []:
+            fa, fb = int(a * FPS) - start, int(b * FPS) - start
+            if fb > 0 and fa < fr:
+                jx += f"+if(between(on,{fa},{fb}),34*sin(on*2.9),0)"
+                jy += f"+if(between(on,{fa},{fb}),26*cos(on*3.7),0)"
+        parts.append(f"[s{k}]zoompan=z='{z}':x='{x}{jx}':y='{y}{jy}':d={fr}:s={fw}x{fh}:fps={FPS},setsar=1[v{k}]")
+        labels.append(f"[v{k}]")
+    n = len(segs)
+    graph = f"[0:v]{pre},split={n}" + "".join(f"[s{k}]" for k in range(n)) + ";" + ";".join(parts) + ";" + \
+        "".join(labels) + f"concat=n={n}:v=1:a=0,format=yuv420p[v]" if n > 1 else \
+        f"[0:v]{pre}[s0];{parts[0].replace('[v0]', ',format=yuv420p[v]')}"
+    await ffmpeg(["-i", str(image), "-filter_complex", graph, "-map", "[v]", "-frames:v", str(total_frames),
+                  "-r", str(FPS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-an", str(dest)])
+
+
+EFFECTS = {
+    "none": "",
+    # granulado, vinheta, leve aberração cromática (VHS) e luz tremulando
+    "terror": "eq=saturation=0.72:contrast=1.14:brightness='-0.035+0.018*sin(13*t)*sin(7.3*t)':eval=frame,"
+              "rgbashift=rh=3:bh=-3,vignette=PI/4,noise=alls=5:allf=t",
+    "vibrante": "eq=saturation=1.22:contrast=1.06,unsharp=5:5:0.6",
+}
+
+
+def pick_music(channel_id: str) -> Path | None:
+    folder = config.MUSIC_DIR / channel_id
+    tracks = [p for p in folder.glob("*") if p.suffix.lower() in (".mp3", ".wav", ".m4a", ".ogg")] \
+        if folder.is_dir() else []
+    return random.choice(tracks) if tracks else None
+
+
+async def render_video(job_dir: Path, images: list[Path], durations: list[float], narration: Path,
+                       ass: Path | None, video: dict, channel_id: str, dest: Path, log=None,
+                       cover: Path | None = None, cover_seconds: float = 0.3,
+                       frame: tuple[int, int] = (W, H), shots: list[list[float]] | None = None,
+                       beats: list[float] | None = None, sfx: Path | None = None, flash: bool = False) -> None:
+    """`shots`: durações dos planos de cada cena; `beats`: instantes (s) de susto/revelação, que ganham
+    tremor, flash (se `flash`) e um respiro na música; `sfx`: trilha de efeitos já mixada."""
+    fw, fh = frame
+    clips_dir = job_dir / "clips"
+    clips_dir.mkdir(exist_ok=True)
+    n = len(images)
+    beats = beats or []
+    # cada clipe ganha XFADE extra para sobrepor na transição (menos o último)
+    lens = [d + (XFADE if i < n - 1 else 0) for i, d in enumerate(durations)]
+    starts = [sum(durations[:i]) for i in range(n)]
+    sem = asyncio.Semaphore(4)
+
+    async def one(i):
+        sh = None
+        if shots and i < len(shots) and shots[i]:
+            sh = list(shots[i])
+            sh[-1] += lens[i] - sum(sh)  # o último plano absorve a sobra da transição
+        shake = [(b - starts[i] - 0.05, b - starts[i] + 0.45) for b in beats if starts[i] <= b < starts[i] + lens[i]]
+        async with sem:
+            await scene_clip(images[i], lens[i], i, clips_dir / f"{i:02d}.mp4", frame, sh, shake)
+            if log:
+                log(f"Cena {i + 1}/{n} renderizada")
+
+    await asyncio.gather(*(one(i) for i in range(n)))
+
+    inputs = []
+    for i in range(n):
+        inputs += ["-i", str(clips_dir / f"{i:02d}.mp4")]
+    na = n
+    inputs += ["-i", str(narration)]
+    nxt = n + 1
+    music = pick_music(channel_id)
+    mi = si = cover_idx = None
+    if music:
+        mi = nxt; nxt += 1
+        inputs += ["-stream_loop", "-1", "-i", str(music)]
+    if sfx and sfx.exists():
+        si = nxt; nxt += 1
+        inputs += ["-i", str(sfx)]
+    if cover and cover.exists():
+        cover_idx = nxt; nxt += 1
+        inputs += ["-i", str(cover)]
+
+    f = []
+    last = "[0:v]"
+    offset = 0.0
+    transitions = ["fade", "fadeblack", "smoothleft", "circleopen", "fade", "dissolve"]
+    for i in range(1, n):
+        offset += durations[i - 1]
+        out = f"[x{i}]"
+        f.append(f"{last}[{i}:v]xfade=transition={transitions[i % len(transitions)]}:"
+                 f"duration={XFADE}:offset={offset:.3f}{out}")
+        last = out
+    total = sum(durations)
+    fx = EFFECTS.get(video.get("effects") or "none", "")
+    flashes = ",".join(f"drawbox=x=0:y=0:w=iw:h=ih:color=white@0.6:t=fill:enable='between(t,{b:.3f},{b + 0.07:.3f})'"
+                       for b in beats) if flash else ""
+    chain = ",".join(x for x in (fx, flashes, f"ass='{ass}':fontsdir='{config.FONTS_DIR}'" if ass else "") if x) or "null"
+    if cover_idx is not None:
+        # capa nos primeiros frames: é o frame que o YouTube costuma usar no feed de Shorts
+        f.append(f"{last}{chain}[vs]")
+        f.append(f"[{cover_idx}:v]scale={fw}:{fh},setsar=1[cov]")
+        f.append(f"[vs][cov]overlay=0:0:enable='lt(t,{cover_seconds:.2f})',format=yuv420p[v]")
+    else:
+        f.append(f"{last}{chain},format=yuv420p[v]")
+
+    # áudio: voz + música (abaixa quando a voz fala e some antes dos sustos) + efeitos
+    mix = []
+    if mi is not None:
+        f.append(f"[{na}:a]aresample=44100,aformat=channel_layouts=stereo,asplit=2[nv][nk]")
+        vol = float(video.get("music_volume") or 0.1) * 1.8
+        dips = "".join(f",volume=0:enable='between(t,{b - 0.7:.2f},{b + 0.2:.2f})'" for b in beats)
+        f.append(f"[{mi}:a]aresample=44100,aformat=channel_layouts=stereo,volume={vol:.3f}{dips},"
+                 f"afade=t=out:st={max(total - 1.5, 0):.2f}:d=1.5[mraw]")
+        f.append("[mraw][nk]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=400[m]")
+        mix += ["[nv]", "[m]"]
+    else:
+        f.append(f"[{na}:a]aresample=44100,aformat=channel_layouts=stereo[nv]")
+        mix.append("[nv]")
+    if si is not None:
+        f.append(f"[{si}:a]aresample=44100,aformat=channel_layouts=stereo[sx]")
+        mix.append("[sx]")
+    if len(mix) > 1:
+        f.append(f"{''.join(mix)}amix=inputs={len(mix)}:duration=first:dropout_transition=0:normalize=0,"
+                 "alimiter=limit=0.95[a]")
+    else:
+        f.append("[nv]anull[a]")
+    await ffmpeg([*inputs, "-filter_complex", ";".join(f), "-map", "[v]", "-map", "[a]",
+                  "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                  "-maxrate", "8M", "-bufsize", "16M", "-r", str(FPS), "-c:a", "aac", "-b:a", "192k", "-ac", "2",
+                  "-movflags", "+faststart", str(dest)],
+                 timeout=max(1800, int(total * 8)))
+
+
+async def render_clip(src: Path, ass: Path | None, dest: Path, cover: Path | None = None,
+                      cover_seconds: float = 0.3) -> None:
+    """Corte: vídeo já reenquadrado em 9:16 + legenda + capa nos primeiros frames + áudio normalizado."""
+    inputs = ["-i", str(src)]
+    chain = f"ass='{ass}':fontsdir='{config.FONTS_DIR}'" if ass else "null"
+    f = []
+    if cover and cover.exists():
+        inputs += ["-i", str(cover)]
+        f.append(f"[0:v]{chain}[vs]")
+        f.append(f"[1:v]scale={W}:{H},setsar=1[cov]")
+        f.append(f"[vs][cov]overlay=0:0:enable='lt(t,{cover_seconds:.2f})',format=yuv420p[v]")
+    else:
+        f.append(f"[0:v]{chain},format=yuv420p[v]")
+    f.append("[0:a]loudnorm=I=-14:TP=-1.5:LRA=11[a]")
+    await ffmpeg([*inputs, "-filter_complex", ";".join(f), "-map", "[v]", "-map", "[a]",
+                  "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-maxrate", "12M", "-bufsize", "24M",
+                  "-r", str(FPS), "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-movflags", "+faststart", str(dest)])
+
+
+# ------------------------------------------------------------------ capa
+def font_file(name: str) -> Path:
+    for p in sorted(config.FONTS_DIR.glob("*.ttf")):
+        if p.stem.split("-")[0].lower() == (name or "").lower():
+            return p
+    return config.FONTS_DIR / "Anton-Regular.ttf"
+
+
+def wrap_cover_text(text: str, max_chars: int = 12) -> list[tuple[str, bool]]:
+    """Quebra o texto em linhas curtas. Palavras entre [colchetes] destacam a linha inteira.
+    Devolve [(linha, destacada)]."""
+    import re
+
+    words = text.split()
+    lines: list[list[str]] = [[]]
+    for w in words:
+        cur = lines[-1]
+        plain_len = len(" ".join(re.sub(r"[\[\]]", "", x) for x in cur + [w]))
+        if cur and plain_len > max_chars:
+            lines.append([w])
+        else:
+            cur.append(w)
+    out = []
+    for ln in lines:
+        raw = " ".join(ln)
+        out.append((re.sub(r"[\[\]]", "", raw), "[" in raw))
+    if out and not any(h for _, h in out) and len(out) > 1:
+        out[-1] = (out[-1][0], True)  # sem marcação: destaca a última linha
+    return out
+
+
+async def build_cover(bg: Path, text: str, opts: dict, dest_png: Path, dest_jpg: Path,
+                      frame: tuple[int, int] = (W, H)) -> None:
+    """Capa (1080x1920 nos shorts, 1280x720 nos longos): fundo recortado, escurecido, com o título por cima."""
+    fw, fh = frame
+    landscape = fw > fh
+    tmp = dest_png.parent / "_cover_txt"
+    tmp.mkdir(exist_ok=True)
+    darken = float(opts.get("darken") if opts.get("darken") is not None else 0.25)
+    vf = [f"scale={fw}:{fh}:force_original_aspect_ratio=increase", f"crop={fw}:{fh}", "setsar=1",
+          f"drawbox=x=0:y=0:w=iw:h=ih:color=black@{darken:.2f}:t=fill", "vignette=PI/5"]
+    text = (text or "").strip()
+    if text:
+        lines = wrap_cover_text(text.upper(), 16 if landscape else 12)
+        longest = max(len(t) for t, _ in lines)
+        if landscape:
+            size = max(70, min(150, int(1180 / (0.5 * max(longest, 4)))))
+        else:
+            size = int(opts.get("font_size") or 0) or max(96, min(190, int(1000 / (0.5 * max(longest, 4)))))
+        line_h = int(size * 1.16)
+        total = line_h * len(lines)
+        pos = opts.get("position") or "top"
+        if landscape:
+            y0 = {"top": 60, "center": (fh - total) // 2, "bottom": fh - total - 60}.get(pos, 60)
+        else:
+            y0 = {"top": 230, "center": (fh - total) // 2, "bottom": fh - total - 360}.get(pos, 230)
+        font = font_file(opts.get("font") or "Anton")
+        base_c = (opts.get("text_color") or "#FFFFFF").lstrip("#")
+        hi_c = (opts.get("highlight_color") or "#FFD400").lstrip("#")
+        for i, (line, hi) in enumerate(lines):
+            tf = tmp / f"{i}.txt"
+            tf.write_text(line, encoding="utf-8")
+            vf.append(
+                f"drawtext=fontfile='{font}':textfile='{tf}':fontsize={size}:fontcolor=0x{hi_c if hi else base_c}:"
+                f"borderw={max(6, size // 14)}:bordercolor=black:shadowx=0:shadowy={size // 16}:shadowcolor=black@0.55:"
+                f"x=(w-text_w)/2:y={y0 + i * line_h}")
+    await ffmpeg(["-i", str(bg), "-vf", ",".join(vf), "-frames:v", "1", str(dest_png)])
+    # JPG para thumbnail do YouTube (limite de 2 MB)
+    await ffmpeg(["-i", str(dest_png), "-q:v", "3", str(dest_jpg)])
+    import shutil
+    shutil.rmtree(tmp, ignore_errors=True)
