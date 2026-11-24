@@ -2010,6 +2010,12 @@ async function pageChannels(tab) {
           ${field(ch, "video.scenes", "Cenas", "number", 'min="2" max="15"')}
           ${field(ch, "video.target_seconds", "Duração alvo (s)", "number", 'min="10" max="180"')}
           ${select(ch, "video.effects", "Efeito visual", META.effects.map((e) => [e, { none: "Nenhum", terror: "Terror (granulado e vinheta)", vibrante: "Vibrante" }[e] || e]))}
+          ${select(ch, "video.camera_motion", "Movimento de câmera", [
+            ["", "Automático"],
+            ["smooth_zoom", "Aproximação suave"],
+            ["smooth_pan", "Panorâmica lateral suave"],
+            ["smooth_tilt", "Panorâmica vertical suave"]
+          ], "Aplicado às cenas geradas a partir de imagens")}
           ${field(ch, "video.music_volume", "Volume da música", "number", 'step="0.01" min="0" max="1"', "0 a 1")}
         </div>
         <div class="fields">

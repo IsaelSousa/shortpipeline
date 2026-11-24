@@ -167,9 +167,23 @@ Optional environment variables: `SHORTPIPELINE_PORT`, `SHORTPIPELINE_HOST`, `SHO
 - YouTube limits monetization of repetitive or reused content without your own contribution; review what goes live.
 - For clips, only use material you own or are authorized to use.
 
+## Camera motion
+
+Under **Canais → Vídeo → Movimento de câmera** (Channels → Video → Camera motion), choose a smooth zoom, horizontal pan, or vertical pan. The effect applies to every shot in image-based scenes for both shorts and long videos. **Automático** keeps the channel's existing motion pattern.
+
+The ShortPipeline renderer implements these movements with FFmpeg.
+
 ## License
 
 Code released under the [MIT License](LICENSE).
+
+### Motion-design references
+
+- **mg-styles-15**, by Vincentwei1021. Its original code, prompts, documentation, and films are MIT-licensed. Third-party material keeps its own terms, including OFL fonts and BSD-3-Clause highlight.js. [MIT license](https://github.com/Vincentwei1021/mg-styles-15/blob/main/LICENSE) · [Asset licenses](https://github.com/Vincentwei1021/mg-styles-15#license)
+- **motion-prompt**, by Shohei Ohtaki. Its original code, images, and videos may be used commercially under MIT. Keep the element's attribution line when reusing its code. Embedded posts belong to their authors. [MIT license](https://github.com/showheyohtaki/motion-prompt/blob/main/LICENSE) · [Third-party notices](https://github.com/showheyohtaki/motion-prompt/blob/main/THIRD-PARTY-NOTICES.md)
+- **animate**, by cth9191. Its original code is MIT-licensed. [MIT license](https://github.com/cth9191/animate/blob/main/LICENSE)
+
+Include the original copyright and license notices when distributing copies or substantial portions of MIT-licensed material.
 
 ## Credits
 

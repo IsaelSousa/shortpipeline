@@ -170,6 +170,21 @@ def _motion(i: int, frames: int) -> tuple[str, str, str]:
 SHOT_KINDS = ["push", "punch", "pan", "detail", "pullback"]
 
 
+def _camera_preset(preset: str, frames: int, index: int) -> tuple[str, str, str] | None:
+    progress = f"on/{max(frames - 1, 1)}"
+    eased = f"(1-cos(PI*{progress}))/2"
+    x_center = "(iw-iw/zoom)/2"
+    y_center = "(ih-ih/zoom)/2"
+    if preset == "smooth_zoom":
+        return f"1+0.22*{eased}", x_center, y_center
+    if preset in ("smooth_pan", "smooth_tilt"):
+        travel = eased if index % 2 == 0 else f"(1-{eased})"
+        if preset == "smooth_pan":
+            return "1.18", f"(iw-iw/zoom)*{travel}", y_center
+        return "1.18", x_center, f"(ih-ih/zoom)*{travel}"
+    return None
+
+
 def _shot(kind: str, frames: int, seed: int) -> tuple[str, str, str]:
     """Enquadramentos tirados da mesma imagem: dão sensação de vários planos sem gastar outra geração."""
     t = f"on/{max(frames, 1)}"
@@ -187,7 +202,8 @@ def _shot(kind: str, frames: int, seed: int) -> tuple[str, str, str]:
 
 
 async def scene_clip(image: Path, duration: float, index: int, dest: Path, frame: tuple[int, int] = (W, H),
-                     shots: list[float] | None = None, shake: list[tuple[float, float]] | None = None) -> None:
+                     shots: list[float] | None = None, shake: list[tuple[float, float]] | None = None,
+                     *, camera_motion: str = "") -> None:
     """Uma cena. Com `shots` (durações), a imagem vira vários planos com corte seco entre eles;
     `shake` são janelas (início, fim) em segundos relativos à cena com tremor de câmera."""
     fw, fh = frame
@@ -195,7 +211,7 @@ async def scene_clip(image: Path, duration: float, index: int, dest: Path, frame
     pre = f"scale={fw * 2}:{fh * 2}:force_original_aspect_ratio=increase,crop={fw * 2}:{fh * 2}"
     if not shots or len(shots) < 2:
         frames = total_frames
-        z, x, y = _motion(index, frames)
+        z, x, y = _camera_preset(camera_motion, frames, index) or _motion(index, frames)
         segs = [(z, x, y, frames, 0)]
     else:
         frames_list = [max(1, int(round(d * FPS))) for d in shots]
@@ -203,7 +219,7 @@ async def scene_clip(image: Path, duration: float, index: int, dest: Path, frame
         segs, start = [], 0
         for j, fr in enumerate(frames_list):
             kind = "push" if j == 0 else SHOT_KINDS[1 + (index + j) % (len(SHOT_KINDS) - 1)]
-            z, x, y = _shot(kind, fr, index + j)
+            z, x, y = _camera_preset(camera_motion, fr, index + j) or _shot(kind, fr, index + j)
             segs.append((z, x, y, fr, start))
             start += fr
     parts, labels = [], []
@@ -266,7 +282,8 @@ async def render_video(job_dir: Path, images: list[Path], durations: list[float]
             sh[-1] += lens[i] - sum(sh)  # o último plano absorve a sobra da transição
         shake = [(b - starts[i] - 0.05, b - starts[i] + 0.45) for b in beats if starts[i] <= b < starts[i] + lens[i]]
         async with sem:
-            await scene_clip(images[i], lens[i], i, clips_dir / f"{i:02d}.mp4", frame, sh, shake)
+            await scene_clip(images[i], lens[i], i, clips_dir / f"{i:02d}.mp4", frame, sh, shake,
+                             camera_motion=video.get("camera_motion", ""))
             if log:
                 log(f"Cena {i + 1}/{n} renderizada")
 

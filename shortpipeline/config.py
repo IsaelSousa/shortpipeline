@@ -327,6 +327,7 @@ DEFAULT_CONFIG: dict = {
                 "caption_uppercase": True,
                 "words_per_caption": 3,
                 "effects": "terror",
+                "camera_motion": "",
                 "music_volume": 0.10,
             },
             "creative": {
@@ -410,6 +411,7 @@ DEFAULT_CONFIG: dict = {
                 "caption_uppercase": True,
                 "words_per_caption": 3,
                 "effects": "none",
+                "camera_motion": "",
                 "music_volume": 0.08,
             },
             "creative": {

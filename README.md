@@ -165,9 +165,23 @@ Variáveis opcionais: `SHORTPIPELINE_PORT`, `SHORTPIPELINE_HOST`, `SHORTPIPELINE
 - O YouTube limita a monetização de conteúdo repetitivo ou reaproveitado sem contribuição própria; revise o que vai ao ar.
 - Para cortes, use apenas material seu ou com autorização.
 
+## Movimento de câmera
+
+Em **Canais → Vídeo → Movimento de câmera**, escolha aproximação suave, panorâmica lateral suave ou panorâmica vertical suave. O efeito é aplicado a cada plano das cenas feitas a partir de imagens, em shorts e vídeos longos. A opção **Automático** mantém a alternância de movimentos do canal.
+
+Os movimentos são implementados no renderizador do ShortPipeline com FFmpeg.
+
 ## Licença
 
 Código sob a licença [MIT](LICENSE).
+
+### Referências de motion design
+
+- **mg-styles-15**, de Vincentwei1021. O código, os prompts, a documentação e os filmes originais do projeto estão sob MIT. Materiais de terceiros mantêm os próprios termos, entre eles fontes OFL e highlight.js sob BSD-3-Clause. [Licença MIT](https://github.com/Vincentwei1021/mg-styles-15/blob/main/LICENSE) · [Licenças dos materiais](https://github.com/Vincentwei1021/mg-styles-15#license)
+- **motion-prompt**, de Shohei Ohtaki. Código, imagens e vídeos próprios podem ser usados comercialmente sob MIT. Preserve a linha de atribuição do elemento ao reutilizar seu código. Os posts incorporados pertencem aos respectivos autores. [Licença MIT](https://github.com/showheyohtaki/motion-prompt/blob/main/LICENSE) · [Avisos de terceiros](https://github.com/showheyohtaki/motion-prompt/blob/main/THIRD-PARTY-NOTICES.md)
+- **animate**, de cth9191. O código próprio está sob MIT. [Licença MIT](https://github.com/cth9191/animate/blob/main/LICENSE)
+
+Ao distribuir cópias ou partes substanciais do material MIT, inclua o aviso de copyright e o texto da licença original.
 
 ## Créditos
 
