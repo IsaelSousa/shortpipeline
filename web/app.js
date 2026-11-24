@@ -172,6 +172,40 @@ function setNewKind(k) {
 }
 $$("#nKind button").forEach((b) => b.onclick = () => setNewKind(b.dataset.k));
 $("#nChan").addEventListener("change", () => setNewKind(newKind));
+
+const btnTrends = $("#btnOpenTrends");
+if (btnTrends) {
+  btnTrends.onclick = async () => {
+    const drawer = $("#trendsDrawer");
+    if (!drawer.hidden) {
+      drawer.hidden = true;
+      return;
+    }
+    drawer.hidden = false;
+    drawer.innerHTML = `<span class="small faint">Buscando pautas quentes no Google Trends...</span>`;
+    try {
+      const list = await api("/api/trends?geo=BR");
+      if (!list?.length) {
+        drawer.innerHTML = `<span class="small faint">Nenhuma tendência encontrada.</span>`;
+        return;
+      }
+      drawer.innerHTML = list.map((t) => `
+        <span class="ai-chip" style="font-size:11px;cursor:pointer" data-trend="${esc(t.query)}" title="${esc(t.news_title || t.query)}">
+          🔥 <b>${esc(t.query)}</b> <span class="faint">(${esc(t.traffic || 'alta')})</span>
+        </span>
+      `).join("");
+      $$("[data-trend]", drawer).forEach((chip) => {
+        chip.onclick = () => {
+          $("#nTopic").value = chip.dataset.trend;
+          drawer.hidden = true;
+        };
+      });
+    } catch (e) {
+      drawer.innerHTML = `<span class="small err">Falha ao buscar tendências: ${esc(e.message)}</span>`;
+    }
+  };
+}
+
 $("#nFile").addEventListener("change", () => {
   const f = $("#nFile").files[0];
   $("#nFileInfo").textContent = f ? `${f.name} · ${(f.size / 1e6).toFixed(0)} MB` : "";
@@ -315,6 +349,7 @@ async function pageDashboard() {
 
 // ------------------------------------------------------------------ detalhe
 const fmtTime = (t) => { t = Math.max(0, Math.round(t)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+const fmtTimeMs = (t) => { t = Math.max(0, t || 0); const m = Math.floor(t / 60); const s = Math.floor(t % 60); const ms = Math.floor((t % 1) * 10); return `${m}:${String(s).padStart(2, "0")}.${ms}`; };
 
 async function pageJob(id) {
   const app = $("#app");
@@ -362,7 +397,9 @@ async function pageJob(id) {
   function tabsFor(kind) {
     const d = job.data, script = d.script || {};
     const imgs = (d.images || []).filter(Boolean).length;
+    const hasTimeline = Boolean((script.scenes && script.scenes.length) || d.clip || d.words);
     const T = {
+      timeline: `${icon("sliders", "sm")}Timeline`,
       roteiro: `${icon("file", "sm")}Roteiro`,
       capa: `${icon("cover", "sm")}Capa`,
       cenas: `${icon("image", "sm")}Cenas<span class="n">${imgs}/${script.scenes?.length || 0}</span>`,
@@ -371,7 +408,10 @@ async function pageJob(id) {
       corte: `${icon("scissors", "sm")}Corte`,
       log: `${icon("term", "sm")}Log<span class="n" id="logCount">${logs.length}</span>`,
     };
-    const order = { fonte: ["cortes", "transcricao", "log"], corte: ["corte", "capa", "log"] }[kind] || ["roteiro", "capa", "cenas", "log"];
+    const order = {
+      fonte: ["cortes", "transcricao", "log"],
+      corte: hasTimeline ? ["timeline", "corte", "capa", "log"] : ["corte", "capa", "log"],
+    }[kind] || (hasTimeline ? ["timeline", "roteiro", "capa", "cenas", "log"] : ["roteiro", "capa", "cenas", "log"]);
     return order.map((k) => [k, T[k]]);
   }
 
@@ -386,7 +426,9 @@ async function pageJob(id) {
     const firstPending = order.find((s) => job.stages[s].status !== "done") || order[0];
     const title = script.title || d.source?.title || job.topic || "Novo";
     const tabs = tabsFor(kind);
-    if (!tab || !tabs.some(([k]) => k === tab)) tab = tabs[0][0];
+    if (!tab || !tabs.some(([k]) => k === tab)) {
+      tab = (job.status === "waiting_approval" && job.stage === "render" && tabs.some(([k]) => k === "timeline")) ? "timeline" : tabs[0][0];
+    }
     const facts = isFonte ? [
       ["Duração", d.source?.duration ? fmtTime(d.source.duration) : "—"], ["Cortes", children.length || "—"],
       ["Transcrição", d.transcript?.provider || "—"], ["Palavras", d.transcript?.words?.toLocaleString() || "—"],
@@ -417,13 +459,22 @@ async function pageJob(id) {
       <div class="card">${stepper(job)}</div>
       ${job.error ? `<div class="banner err" style="margin-top:16px"><span class="ic">${icon("alert")}</span><div><b>Falha na etapa ${esc(META.stage_labels[job.stage] || "")}</b><div class="small muted" style="margin-top:2px;overflow-wrap:anywhere">${esc(job.error)}</div></div></div>` : ""}
       ${publishedBanner(job)}
-      ${job.status === "waiting_approval" ? approveCard(script, ch) : ""}
+      ${job.status === "waiting_approval" ? (job.stage === "render" ? renderApproveCard(job) : approveCard(script, ch)) : ""}
 
       <div class="detail-grid ${wide ? "wide" : ""}">
         <div class="phone">
           <div class="frame">${video
-            ? `<video src="${video}?v=${job.stages.render?.ended || ""}" controls playsinline preload="metadata"></video>`
-            : `<div class="empty">${job.status === "running" ? icon("loader", "lg spin") : icon("film", "lg")}<span>${job.status === "running" ? "O vídeo aparece aqui quando estiver pronto" : "Sem vídeo ainda"}</span></div>`}</div>
+            ? `<video src="${video}?v=${job.stages.render?.ended || ""}" controls playsinline preload="metadata" id="mainVideo"></video>`
+            : (d.images?.some(Boolean) || d.cover?.image
+              ? `<div class="phone-live-player" id="phoneLivePlayer">
+                  <img id="plpImg" src="${fileUrl(job, relPath(job, (d.images?.find(Boolean) || d.cover?.image)))}" alt="">
+                  <div class="caption-overlay" id="plpCaption"></div>
+                  <div class="meter-overlay" id="plpMeter" style="display:none">
+                    <span class="muted small" id="plpMeterLabel">${esc(ch.creative?.rating_label || "NOTA")}</span>
+                    <b style="font-size:16px;color:var(--warn)" id="plpMeterScore">${esc(script.rating != null ? script.rating + "/10" : "")}</b>
+                  </div>
+                </div>`
+              : `<div class="empty">${job.status === "running" ? icon("loader", "lg spin") : icon("film", "lg")}<span>${job.status === "running" ? "O vídeo aparece aqui quando estiver pronto" : "Sem vídeo ainda"}</span></div>`)}</div>
           ${video && !isFonte ? `<div class="row" style="margin-top:12px"><a class="btn grow" href="${video}?download=1">${icon("download")}Baixar MP4</a>
             ${job.status === "done" && d.publish?.mode === "manual" ? `<button class="btn grow" id="pubNow">${icon("yt")}Enviar ao YouTube</button><button class="btn grow" id="pubDraft" title="Sobe privado, sem avisar inscritos">${icon("yt")}Rascunho</button>` : ""}</div>` : ""}
           ${isFonte && d.source?.url ? `<div class="row" style="margin-top:12px"><a class="btn grow" href="${esc(d.source.url)}" target="_blank" rel="noreferrer">${icon("ext")}Abrir original</a></div>` : ""}
@@ -441,15 +492,842 @@ async function pageJob(id) {
     $("#del").onclick = () => confirm(`Excluir este ${what} e todos os arquivos?`) && act(async () => { await api(`/api/jobs/${id}`, { method: "DELETE" }); location.hash = parent ? `#job/${parent.id}` : "#painel"; }, "Excluído");
     $("#pubDraft") && ($("#pubDraft").onclick = () => act(async () => { await api(`/api/jobs/${id}/publish`, { method: "POST", body: { draft: true } }); load(true); }, "Enviando como rascunho"));
     $("#pubNow") && ($("#pubNow").onclick = () => act(async () => { await api(`/api/jobs/${id}/publish`, { method: "POST", body: {} }); load(true); }, "Enviando ao YouTube"));
+    $("#reuploadThumb") && ($("#reuploadThumb").onclick = () => act(async () => { await api(`/api/jobs/${id}/upload-thumbnail`, { method: "POST" }); load(true); }, "Capa reenviada ao YouTube como thumbnail"));
+    $("#btnPublishTikTok") && ($("#btnPublishTikTok").onclick = () => act(async () => {
+      await api(`/api/jobs/${id}/publish-tiktok`, { method: "POST", body: {} });
+      load(true);
+    }, "Enviando vídeo para o TikTok"));
+    $("#btnPublishIg") && ($("#btnPublishIg").onclick = () => act(async () => {
+      await api(`/api/jobs/${id}/publish-instagram`, { method: "POST", body: {} });
+      load(true);
+    }, "Enviando vídeo para o Instagram Reels"));
     if (job.status === "waiting_approval") bindApprove();
     $$(".tabs-line button").forEach((b) => b.onclick = () => { tab = b.dataset.tab; renderTab(); });
     renderTab();
+  }
+
+  async function renderTimeline(body, job, load) {
+    body.innerHTML = `<div class="card-body"><div class="skeleton" style="height:260px"></div></div>`;
+    let tl;
+    try {
+      tl = await api(`/api/jobs/${job.id}/timeline`);
+    } catch (e) {
+      body.innerHTML = emptyTab("alert", `Falha ao carregar timeline: ${e.message}`);
+      return;
+    }
+
+    if (!tl.scenes?.length && !tl.total_duration) {
+      body.innerHTML = emptyTab("sliders", "A timeline de faixas estará disponível assim que o roteiro e a narração forem gerados.");
+      return;
+    }
+
+    let pxPerSec = 24;
+    let currentTime = 0;
+    let isPlaying = false;
+    let selectedIdx = 0;
+    let voiceMuted = false;
+    let sfxMuted = false;
+    let playTimer = null;
+
+    let audioNarration = null;
+    let audioSfx = null;
+    let videoEl = $("#mainVideo");
+
+    if (tl.audio?.narration_url) {
+      audioNarration = new Audio(tl.audio.narration_url);
+      audioNarration.preload = "auto";
+    }
+    if (tl.audio?.sfx_url) {
+      audioSfx = new Audio(tl.audio.sfx_url);
+      audioSfx.preload = "auto";
+    }
+
+    function cleanupAudio() {
+      if (audioNarration) { audioNarration.pause(); audioNarration = null; }
+      if (audioSfx) { audioSfx.pause(); audioSfx = null; }
+      if (playTimer) { cancelAnimationFrame(playTimer); playTimer = null; }
+    }
+
+    const typeIcons = {
+      whoosh: "💨",
+      impact: "⚡",
+      riser: "📈",
+      sfx: "🔔",
+      blip: "⭐",
+      sonic_logo: "🎵"
+    };
+
+    body.innerHTML = `
+      <div class="card-body stack" style="gap:16px">
+        <div class="ai-correct-drawer" id="tlAiDrawer" hidden>
+          <div class="row" style="justify-content:space-between;margin-bottom:8px">
+            <div class="row" style="gap:8px">
+              <span style="color:var(--accent)">${icon("wand")}</span>
+              <b style="font-size:13.5px">Assistente de Correção com IA</b>
+            </div>
+            <button class="btn ghost icon sm" id="tlCloseAi" title="Fechar">${icon("x", "sm")}</button>
+          </div>
+          <p class="small muted" style="margin-bottom:10px">
+            Peça qualquer correção antes de renderizar (ex.: mudar imagem de uma cena, reescrever fala, alterar efeitos ou capa). A IA aplica e refaz o que for necessário.
+          </p>
+          <div class="ai-chips">
+            <span class="ai-chip" data-tpl="A imagem da cena {n} não ficou boa, troque por ">🎨 Mudar imagem da cena...</span>
+            <span class="ai-chip" data-tpl="Reescreva a narração da cena {n} para: ">✍️ Ajustar narração...</span>
+            <span class="ai-chip" data-tpl="Remova o efeito de susto/impacto da cena {n}">🔊 Tirar susto/impacto...</span>
+            <span class="ai-chip" data-tpl="Mude o texto da capa para: ">🖼️ Trocar texto da capa...</span>
+          </div>
+          <textarea id="tlAiInput" class="prose" style="min-height:76px;margin-bottom:10px" placeholder="Ex.: A imagem da cena 2 não combinou, troque por um laboratório escuro e chuvoso..."></textarea>
+          <div class="row" style="justify-content:flex-end;gap:10px">
+            <button class="btn sm" id="tlCancelAi">Cancelar</button>
+            <button class="btn sm primary" id="tlApplyAi">${icon("check", "sm")}Aplicar correção e refazer</button>
+          </div>
+        </div>
+
+        <div class="ai-correct-drawer" id="tlSfxDrawer" hidden style="border-color:#38bdf8;background:color-mix(in srgb, #0284c7 15%, var(--surface-2))">
+          <div class="row" style="justify-content:space-between;margin-bottom:8px">
+            <div class="row" style="gap:8px">
+              <span style="color:#38bdf8">${icon("volume")}</span>
+              <b style="font-size:13.5px">Adicionar Efeito Sonoro no Cursor (<span id="sfxTimeLabel">0.0s</span>)</b>
+            </div>
+            <button class="btn ghost icon sm" id="tlCloseSfx" title="Fechar">${icon("x", "sm")}</button>
+          </div>
+          <p class="small muted" style="margin-bottom:10px">
+            Escolha o tipo de efeito para inserir no momento exato da agulha. O áudio é remixado na hora.
+          </p>
+          <div class="row wrap" style="gap:8px">
+            <button class="btn sm" data-sfx="whoosh">💨 Whoosh (Transição)</button>
+            <button class="btn sm" data-sfx="impact">⚡ Impacto / Susto</button>
+            <button class="btn sm" data-sfx="riser">📈 Riser (Tensão)</button>
+            <button class="btn sm" data-sfx="blip">⭐ Blip / Pop</button>
+            <button class="btn sm" data-sfx="sfx">🔔 Efeito geral</button>
+          </div>
+        </div>
+
+        <div class="ai-correct-drawer" id="tlMixerDrawer" hidden style="border-color:var(--warn);background:color-mix(in srgb, var(--warn-soft) 25%, var(--surface-2))">
+          <div class="row" style="justify-content:space-between;margin-bottom:8px">
+            <div class="row" style="gap:8px">
+              <span style="color:var(--warn)">${icon("sliders")}</span>
+              <b style="font-size:13.5px">Mixer de Níveis de Áudio</b>
+            </div>
+            <button class="btn ghost icon sm" id="tlCloseMixer" title="Fechar">${icon("x", "sm")}</button>
+          </div>
+          <p class="small muted" style="margin-bottom:12px">
+            Ajuste o equilíbrio entre a voz da narração, a trilha sonora de fundo e os efeitos sonoros.
+          </p>
+          <div class="fields" style="grid-template-columns:repeat(3, 1fr);gap:16px">
+            <label class="field"><span>🎤 Narração (Voz)</span>
+              <input type="range" id="mixVoice" min="0" max="2" step="0.05" value="${job.data?.audio_levels?.voice ?? 1.0}">
+              <div class="small faint text-right" id="lblMixVoice">${Math.round((job.data?.audio_levels?.voice ?? 1.0) * 100)}%</div>
+            </label>
+            <label class="field"><span>🎵 Trilha / Ambiência</span>
+              <input type="range" id="mixBgm" min="0" max="2" step="0.05" value="${job.data?.audio_levels?.bgm ?? 1.0}">
+              <div class="small faint text-right" id="lblMixBgm">${Math.round((job.data?.audio_levels?.bgm ?? 1.0) * 100)}%</div>
+            </label>
+            <label class="field"><span>🔔 Efeitos (SFX)</span>
+              <input type="range" id="mixSfx" min="0" max="2" step="0.05" value="${job.data?.audio_levels?.sfx ?? 1.0}">
+              <div class="small faint text-right" id="lblMixSfx">${Math.round((job.data?.audio_levels?.sfx ?? 1.0) * 100)}%</div>
+            </label>
+          </div>
+          <div class="row" style="justify-content:flex-end;margin-top:10px">
+            <button class="btn sm primary" id="btnSaveMixer">${icon("check", "sm")}Salvar Níveis</button>
+          </div>
+        </div>
+
+        <div class="timeline-card">
+          <div class="tl-toolbar">
+            <div class="tl-controls">
+              <button class="btn icon sm" id="tlPlayBtn" title="Play/Pause (Espaço)">${icon("play", "sm")}</button>
+              <button class="btn icon sm" id="tlStopBtn" title="Voltar ao início">${icon("back", "sm")}</button>
+              <div class="tl-timer" id="tlTimer">00:00.0 / ${fmtTimeMs(tl.total_duration)}</div>
+              ${tl.audio?.narration_url ? `<button class="btn sm ghost" id="tlToggleVoice">${icon("mic", "sm")} <span id="lblVoice">Voz</span></button>` : ""}
+              ${tl.audio?.sfx_url ? `<button class="btn sm ghost" id="tlToggleSfx">${icon("volume", "sm")} <span id="lblSfx">Som</span></button>` : ""}
+            </div>
+
+            <div class="row" style="gap:8px">
+              <button class="btn sm icon" id="tlZoomOut" title="Diminuir escala">${icon("down", "sm")}</button>
+              <button class="btn sm" id="tlZoomFit" title="Ajustar à tela">Ajustar</button>
+              <button class="btn sm icon" id="tlZoomIn" title="Aumentar escala">${icon("up", "sm")}</button>
+              <button class="btn sm" id="tlAddSfxBtn">${icon("plus", "sm")}Adicionar SFX</button>
+              <button class="btn sm" id="tlMixerBtn">${icon("sliders", "sm")}Mixer de Áudio</button>
+              <button class="btn sm" id="tlOpenAiBtn">${icon("wand", "sm")}Pedir correção</button>
+              ${tl.status.is_waiting_render ? `<button class="btn sm primary" id="tlDirectRender">${icon("play", "sm")}Aprovar e Renderizar</button>` : ""}
+            </div>
+          </div>
+
+          <div class="tl-workspace">
+            <div class="tl-headers">
+              <div class="tl-hdr-ruler">TEMPO</div>
+              <div class="tl-hdr-track tl-hdr-video">${icon("film", "sm")}Vídeo / Cenas</div>
+              <div class="tl-hdr-track tl-hdr-captions">${icon("cc", "sm")}Legendas</div>
+              <div class="tl-hdr-track tl-hdr-narration">${icon("mic", "sm")}Narração</div>
+              <div class="tl-hdr-track tl-hdr-sfx" id="tlHdrSfx">${icon("volume", "sm")}Efeitos (SFX)</div>
+              <div class="tl-hdr-track tl-hdr-ambience" id="tlHdrAmbience">🌊 Ambiência</div>
+            </div>
+
+            <div class="tl-body" id="tlBody">
+              <div class="tl-inner" id="tlInner">
+                <div class="tl-ruler" id="tlRuler"></div>
+                <div class="tl-playhead" id="tlPlayhead"></div>
+                <div class="tl-tracks">
+                  <div class="tl-track tl-track-video" id="tlTrackVideo"></div>
+                  <div class="tl-track tl-track-captions" id="tlTrackCaptions"></div>
+                  <div class="tl-track tl-track-narration" id="tlTrackNarration"></div>
+                  <div class="tl-track tl-track-sfx" id="tlTrackSfx"></div>
+                  <div class="tl-track tl-track-ambience" id="tlTrackAmbience"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tl-item-action" id="tlItemAction" hidden></div>
+          <div class="tl-inspector" id="tlInspector"></div>
+        </div>
+      </div>
+    `;
+
+    function updateScale() {
+      const w = Math.max(700, Math.round(tl.total_duration * pxPerSec));
+      $("#tlInner").style.width = `${w}px`;
+      drawRuler();
+      drawTracks();
+      updatePlayhead();
+    }
+
+    function drawRuler() {
+      const ruler = $("#tlRuler");
+      if (!ruler) return;
+      let html = "";
+      const step = pxPerSec < 15 ? 10 : pxPerSec < 35 ? 5 : 2;
+      for (let s = 0; s <= tl.total_duration; s += 1) {
+        const x = Math.round(s * pxPerSec);
+        if (s % step === 0) {
+          html += `<div class="tl-mark" style="left:${x}px">${fmtTime(s)}</div>`;
+        } else {
+          html += `<div class="tl-submark" style="left:${x}px"></div>`;
+        }
+      }
+      ruler.innerHTML = html;
+    }
+
+    function drawTracks() {
+      const trVideo = $("#tlTrackVideo");
+      let vidHtml = "";
+      const covSec = tl.cover?.in_video_seconds || 0;
+      if (covSec > 0) {
+        const covW = Math.max(16, Math.round(covSec * pxPerSec));
+        vidHtml += `<div class="tl-block tl-cover-blk" style="left:0px;width:${covW}px" title="Capa (${covSec}s)">CAPA</div>`;
+      }
+      tl.scenes.forEach((sc, i) => {
+        const left = Math.round((sc.start + covSec) * pxPerSec);
+        const width = Math.max(24, Math.round(sc.duration * pxPerSec));
+        const bg = sc.image_url ? `background-image:url('${sc.image_url}')` : "";
+        vidHtml += `
+          <div class="tl-block tl-scene-blk ${i === selectedIdx ? "selected" : ""}" data-idx="${i}" style="left:${left}px;width:${width}px;${bg}" title="Cena ${sc.scene_num}: ${esc(sc.narration)}">
+            <div class="tl-scene-top">
+              <span class="tl-scene-num">${sc.scene_num}</span>
+              <span class="tl-scene-dur">${sc.duration}s</span>
+            </div>
+            <div class="tl-scene-txt">${esc(sc.narration)}</div>
+            ${(sc.shots || []).slice(0, -1).map((sDur, sIdx) => {
+              const cutPct = (sc.shots.slice(0, sIdx + 1).reduce((a, b) => a + b, 0) / sc.duration) * 100;
+              return `<div class="tl-cut-line" style="left:${cutPct.toFixed(1)}%" title="Corte de plano (${cutPct.toFixed(0)}%)"></div>`;
+            }).join("")}
+          </div>
+        `;
+      });
+      if (tl.meter) {
+        const mLeft = Math.round(tl.meter.start * pxPerSec);
+        vidHtml += `<div class="tl-meter-badge" style="left:${mLeft}px">${esc(tl.meter.label)} ${esc(tl.meter.score)}/10</div>`;
+      }
+      trVideo.innerHTML = vidHtml;
+
+      const trCaptions = $("#tlTrackCaptions");
+      let capHtml = "";
+      (tl.captions || []).forEach((c) => {
+        const left = Math.round(c.start * pxPerSec);
+        const width = Math.max(16, Math.round((c.end - c.start) * pxPerSec));
+        capHtml += `
+          <div class="tl-block tl-cap-blk" style="left:${left}px;width:${width}px" title="[${c.start.toFixed(1)}s - ${c.end.toFixed(1)}s] ${esc(c.text)}">
+            <span class="ellipsis">${esc(c.text)}</span>
+          </div>
+        `;
+      });
+      trCaptions.innerHTML = capHtml;
+
+      const trNarr = $("#tlTrackNarration");
+      let narrHtml = "";
+      tl.scenes.forEach((sc, i) => {
+        const left = Math.round((sc.start + covSec) * pxPerSec);
+        const width = Math.max(20, Math.round(sc.duration * pxPerSec));
+        narrHtml += `
+          <div class="tl-block tl-speech-blk" data-idx="${i}" style="left:${left}px;width:${width}px" title="Narração cena ${sc.scene_num} (${sc.duration}s)">
+            <span class="ellipsis" style="max-width:85%">${esc(sc.narration)}</span>
+            <div class="wave"><span></span><span></span><span></span></div>
+          </div>
+        `;
+      });
+      trNarr.innerHTML = narrHtml;
+
+      // --- FAIXA DE EFEITOS (SFX) ---
+      const hdrSfx = $("#tlHdrSfx");
+      const trSfx = $("#tlTrackSfx");
+      const sfxEvents = [...(tl.sound_events || [])].sort((a, b) => a.at - b.at);
+
+      function formatEventLabel(ev) {
+        const raw = (ev.label || ev.sound || "Som").trim();
+        if (ev.type === "whoosh") return "Whoosh";
+        if (ev.type === "sonic_logo") return "Assinatura";
+        if (ev.type === "blip") return "Selo de nota";
+        if (ev.type === "impact") {
+          if (/susto/i.test(raw)) return "Susto";
+          if (/revela/i.test(raw)) return "Revelação";
+          return "Impacto";
+        }
+        let s = raw.replace(/^[\(\[\"\'\s]+|[\)\]\"\'\s]+$/g, "");
+        if (s.length > 15) return s.slice(0, 13) + "…";
+        return s;
+      }
+
+      function getPillWidth(label) {
+        return Math.max(54, Math.min(94, Math.round((label || "").length * 5.8 + 24)));
+      }
+
+      const sfxLanes = [];
+      const placedSfx = sfxEvents.map((ev) => {
+        const left = Math.round(ev.at * pxPerSec);
+        const label = formatEventLabel(ev);
+        const width = getPillWidth(label);
+        const right = left + width;
+
+        let laneIdx = -1;
+        for (let i = 0; i < sfxLanes.length; i++) {
+          if (left >= sfxLanes[i] + 4) {
+            laneIdx = i;
+            break;
+          }
+        }
+        if (laneIdx === -1) {
+          laneIdx = sfxLanes.length;
+          sfxLanes.push(right);
+        } else {
+          sfxLanes[laneIdx] = right;
+        }
+        return { ev, label, left, width, lane: laneIdx };
+      });
+
+      const numSfxLanes = Math.max(1, sfxLanes.length);
+      const SFX_LANE_H = 24;
+      const SFX_GAP = 4;
+      const totalSfxH = numSfxLanes * SFX_LANE_H + (numSfxLanes - 1) * SFX_GAP + 10;
+
+      if (hdrSfx) hdrSfx.style.height = `${totalSfxH}px`;
+      if (trSfx) {
+        trSfx.style.height = `${totalSfxH}px`;
+        let sfxHtml = "";
+        if (!placedSfx.length) {
+          sfxHtml = `<div class="tl-empty-hint">Nenhum efeito sonoro cadastrado</div>`;
+        } else {
+          placedSfx.forEach(({ ev, label, left, width, lane }) => {
+            const top = 5 + lane * (SFX_LANE_H + SFX_GAP);
+            const ic = typeIcons[ev.type] || "🔔";
+            const fullDesc = ev.label || ev.sound || "Som";
+            const scIdx = ev.scene ? ev.scene - 1 : -1;
+            sfxHtml += `
+              <div class="tl-sfx-pill tl-sfx-${ev.type || "sfx"}"
+                   data-at="${ev.at}" data-scene="${scIdx}"
+                   data-label="${esc(fullDesc)}" data-type="${ev.type || "sfx"}"
+                   style="left:${left}px;top:${top}px;width:${width}px"
+                   title="[${ev.at}s] ${esc(fullDesc)}">
+                <span class="sfx-ic">${ic}</span>
+                <span class="sfx-txt">${esc(label)}</span>
+              </div>
+            `;
+          });
+        }
+        trSfx.innerHTML = sfxHtml;
+      }
+
+      // --- FAIXA DE AMBIÊNCIA ---
+      const hdrAmb = $("#tlHdrAmbience");
+      const trAmb = $("#tlTrackAmbience");
+      const beds = (tl.sound_beds || []).slice().sort((a, b) => a.start - b.start);
+
+      if (beds.length === 0) {
+        if (hdrAmb) hdrAmb.style.display = "none";
+        if (trAmb) trAmb.style.display = "none";
+      } else {
+        if (hdrAmb) hdrAmb.style.display = "";
+        if (trAmb) trAmb.style.display = "";
+
+        const ambLanes = [];
+        const placedBeds = beds.map((b) => {
+          const left = Math.round(b.start * pxPerSec);
+          const width = Math.max(30, Math.round(b.dur * pxPerSec));
+          const right = left + width;
+          let laneIdx = -1;
+          for (let i = 0; i < ambLanes.length; i++) {
+            if (left >= ambLanes[i]) {
+              laneIdx = i;
+              break;
+            }
+          }
+          if (laneIdx === -1) {
+            laneIdx = ambLanes.length;
+            ambLanes.push(right);
+          } else {
+            ambLanes[laneIdx] = right;
+          }
+          return { b, left, width, lane: laneIdx };
+        });
+
+        const numAmbLanes = Math.max(1, ambLanes.length);
+        const AMB_LANE_H = 24;
+        const AMB_GAP = 4;
+        const totalAmbH = numAmbLanes * AMB_LANE_H + (numAmbLanes - 1) * AMB_GAP + 8;
+
+        if (hdrAmb) hdrAmb.style.height = `${totalAmbH}px`;
+        if (trAmb) {
+          trAmb.style.height = `${totalAmbH}px`;
+          let ambHtml = "";
+          placedBeds.forEach(({ b, left, width, lane }) => {
+            const top = 4 + lane * (AMB_LANE_H + AMB_GAP);
+            const scIdx = b.scene ? b.scene - 1 : -1;
+            ambHtml += `
+              <div class="tl-bed-bar" data-start="${b.start}" data-scene="${scIdx}" data-sound="${esc(b.sound)}"
+                   style="left:${left}px;top:${top}px;width:${width}px"
+                   title="Ambiente: ${esc(b.sound)} (${b.dur}s)">
+                <span class="ellipsis">🌊 ${esc(b.sound)}</span>
+              </div>
+            `;
+          });
+          trAmb.innerHTML = ambHtml;
+        }
+      }
+
+      $$(".tl-scene-blk, .tl-speech-blk", $("#tlInner")).forEach((el) => {
+        el.onclick = (e) => {
+          e.stopPropagation();
+          const idx = +el.dataset.idx;
+          selectScene(idx);
+          seekTo(tl.scenes[idx].start);
+        };
+      });
+
+      function hideItemAction() {
+        const el = $("#tlItemAction");
+        if (el) el.hidden = true;
+      }
+
+      function showItemAction(kind, item) {
+        const box = $("#tlItemAction");
+        if (!box) return;
+        if (kind === "sfx") {
+          const ic = typeIcons[item.type] || "🔔";
+          box.innerHTML = `
+            <div class="row" style="gap:10px">
+              <span style="font-size:18px">${ic}</span>
+              <div>
+                <div style="font-weight:600;font-size:13px">${esc(item.label || "Efeito sonoro")}</div>
+                <div class="small muted">Efeito pontual aos ${item.at}s</div>
+              </div>
+            </div>
+            <div class="row" style="gap:8px">
+              <button class="btn sm ghost" id="tlItemClose">${icon("x", "sm")}</button>
+              <button class="btn sm danger" id="tlDelSfxBtn">${icon("trash", "sm")}Remover este efeito</button>
+            </div>
+          `;
+          box.hidden = false;
+          $("#tlItemClose").onclick = hideItemAction;
+          $("#tlDelSfxBtn").onclick = () => {
+            if (confirm(`Remover o efeito "${item.label}" aos ${item.at}s? A trilha de som será remixada.`)) {
+              act(async () => {
+                await api(`/api/jobs/${job.id}/delete-sfx`, { method: "POST", body: { at: item.at, label: item.label } });
+                await renderTimeline(body, job, load);
+              }, "Efeito sonoro removido");
+            }
+          };
+        } else if (kind === "ambience") {
+          box.innerHTML = `
+            <div class="row" style="gap:10px">
+              <span style="font-size:18px">🌊</span>
+              <div>
+                <div style="font-weight:600;font-size:13px">Ambiente: ${esc(item.sound || "Fundo")}</div>
+                <div class="small muted">Inicia aos ${item.start}s</div>
+              </div>
+            </div>
+            <div class="row" style="gap:8px">
+              <button class="btn sm ghost" id="tlItemClose">${icon("x", "sm")}</button>
+              <button class="btn sm danger" id="tlDelAmbBtn">${icon("trash", "sm")}Remover ambiente</button>
+            </div>
+          `;
+          box.hidden = false;
+          $("#tlItemClose").onclick = hideItemAction;
+          $("#tlDelAmbBtn").onclick = () => {
+            if (confirm(`Remover o som ambiente "${item.sound}"? A trilha será remixada.`)) {
+              act(async () => {
+                await api(`/api/jobs/${job.id}/delete-ambience`, { method: "POST", body: { start: item.start, sound: item.sound } });
+                await renderTimeline(body, job, load);
+              }, "Som ambiente removido");
+            }
+          };
+        }
+      }
+
+      if (trSfx) {
+        $$(".tl-sfx-pill", trSfx).forEach((el) => {
+          el.onclick = (e) => {
+            e.stopPropagation();
+            const at = parseFloat(el.dataset.at);
+            seekTo(at);
+            const scIdx = +el.dataset.scene;
+            if (!isNaN(scIdx) && scIdx >= 0) selectScene(scIdx, false);
+            showItemAction("sfx", { at, label: el.dataset.label, type: el.dataset.type });
+          };
+        });
+      }
+
+      if (trAmb) {
+        $$(".tl-bed-bar", trAmb).forEach((el) => {
+          el.onclick = (e) => {
+            e.stopPropagation();
+            const start = parseFloat(el.dataset.start);
+            seekTo(start);
+            const scIdx = +el.dataset.scene;
+            if (!isNaN(scIdx) && scIdx >= 0) selectScene(scIdx, false);
+            showItemAction("ambience", { start, sound: el.dataset.sound });
+          };
+        });
+      }
+    }
+
+    function selectScene(idx, clearAction = true) {
+      if (idx < 0 || idx >= tl.scenes.length) return;
+      selectedIdx = idx;
+      if (clearAction) {
+        const box = $("#tlItemAction");
+        if (box) box.hidden = true;
+      }
+      $$(".tl-scene-blk").forEach((el) => el.classList.toggle("selected", +el.dataset.idx === selectedIdx));
+      renderInspector();
+    }
+
+    function renderInspector() {
+      const insp = $("#tlInspector");
+      if (!insp) return;
+      const sc = tl.scenes[selectedIdx];
+      if (!sc) { insp.innerHTML = ""; return; }
+
+      insp.innerHTML = `
+        <div class="tl-insp-preview">
+          ${sc.image_url ? `<a href="${sc.image_url}" target="_blank"><img src="${sc.image_url}" alt="Cena ${sc.scene_num}"></a>` : icon("image", "lg")}
+        </div>
+        <div class="tl-insp-body">
+          <div class="tl-insp-head">
+            <div>
+              <h3 style="font-size:15px">Cena ${sc.scene_num} <span class="muted small">(${fmtTimeMs(sc.start)} – ${fmtTimeMs(sc.end)} · ${sc.duration}s)</span></h3>
+              ${sc.beat ? `<span class="tag beat" style="margin-top:4px">Momento de ${sc.beat === "scare" ? "susto" : "revelação"}</span>` : ""}
+            </div>
+            <div class="row" style="gap:8px">
+              ${sc.audio_url ? `<button class="btn sm icon" id="tlPlaySolo" title="Ouvir cena">${icon("volume", "sm")}</button>` : ""}
+              <button class="btn sm" id="tlAskSceneAi">${icon("wand", "sm")}Pedir correção</button>
+              ${tl.scenes.length > 1 ? `<button class="btn sm danger" id="tlDeleteSceneBtn" title="Excluir esta cena do vídeo">${icon("trash", "sm")}Excluir cena</button>` : ""}
+            </div>
+          </div>
+
+          <div class="fields two">
+            <label class="field">
+              <span>Prompt da Imagem</span>
+              <textarea id="tlInspPrompt" class="prose" style="min-height:64px">${esc(sc.image_prompt || "")}</textarea>
+              <div class="row" style="margin-top:4px">
+                <button class="btn sm primary" id="tlRegenImg">${icon("refresh", "sm")}Regerar imagem</button>
+              </div>
+            </label>
+
+            <label class="field">
+              <span>Texto da Narração</span>
+              <textarea id="tlInspNarration" class="prose" style="min-height:64px">${esc(sc.narration || "")}</textarea>
+              <div class="row" style="margin-top:4px">
+                <button class="btn sm" id="tlSaveNarration">${icon("check", "sm")}Salvar narração</button>
+              </div>
+            </label>
+          </div>
+
+          ${(sc.sfx || []).length || sc.ambience ? `
+            <div class="row wrap" style="gap:8px;font-size:12px">
+              ${sc.ambience ? `<span class="tag">${icon("wave", "sm")}Ambiente: ${esc(sc.ambience)}</span>` : ""}
+              ${(sc.sfx || []).map((x) => `<span class="tag">${icon("volume", "sm")}“${esc(x.word)}” → ${esc(x.sound)}</span>`).join("")}
+            </div>
+          ` : ""}
+        </div>
+      `;
+
+      $("#tlRegenImg").onclick = () => {
+        const prompt = $("#tlInspPrompt").value;
+        cleanupAudio();
+        act(async () => {
+          await api(`/api/jobs/${job.id}/regenerate-image/${selectedIdx}`, { method: "POST", body: { image_prompt: prompt } });
+          load(true);
+        }, `Regerando imagem da cena ${sc.scene_num}`);
+      };
+
+      $("#tlSaveNarration").onclick = () => {
+        const text = $("#tlInspNarration").value;
+        const script = JSON.parse(JSON.stringify(job.data.script || {}));
+        if (script.scenes?.[selectedIdx]) {
+          script.scenes[selectedIdx].narration = text;
+          cleanupAudio();
+          act(async () => {
+            await api(`/api/jobs/${job.id}/script`, { method: "PUT", body: script });
+            load(true);
+          }, `Narração atualizada; refazendo`);
+        }
+      };
+
+      $("#tlAskSceneAi").onclick = () => {
+        const drawer = $("#tlAiDrawer");
+        drawer.hidden = false;
+        $("#tlAiInput").value = `Na cena ${sc.scene_num}: `;
+        $("#tlAiInput").focus();
+      };
+
+      if ($("#tlDeleteSceneBtn")) {
+        $("#tlDeleteSceneBtn").onclick = () => {
+          if (confirm(`Excluir a Cena ${sc.scene_num}? O roteiro será recalculado e a narração reajustada.`)) {
+            cleanupAudio();
+            act(async () => {
+              await api(`/api/jobs/${job.id}/delete-scene`, { method: "POST", body: { scene_num: sc.scene_num } });
+              load(true);
+            }, "Cena excluída com sucesso");
+          }
+        };
+      }
+
+      if ($("#tlPlaySolo") && sc.audio_url) {
+        $("#tlPlaySolo").onclick = () => {
+          const a = new Audio(sc.audio_url);
+          a.play();
+        };
+      }
+    }
+
+    function updatePlayhead() {
+      const ph = $("#tlPlayhead");
+      const tm = $("#tlTimer");
+      if (ph) ph.style.left = `${Math.round(currentTime * pxPerSec)}px`;
+      if (tm) tm.textContent = `${fmtTimeMs(currentTime)} / ${fmtTimeMs(tl.total_duration)}`;
+
+      const plpImg = $("#plpImg");
+      const plpCaption = $("#plpCaption");
+      const plpMeter = $("#plpMeter");
+
+      const covSec = tl.cover?.in_video_seconds || 0;
+      if (covSec > 0 && currentTime < covSec && tl.cover?.image_url) {
+        if (plpImg) plpImg.src = tl.cover.image_url;
+      } else {
+        const activeSc = tl.scenes.find((s) => currentTime >= s.start + covSec && currentTime <= s.end + covSec) || tl.scenes[selectedIdx];
+        if (activeSc && plpImg && activeSc.image_url) {
+          plpImg.src = activeSc.image_url;
+        }
+      }
+
+      const activeCap = (tl.captions || []).find((c) => currentTime >= c.start && currentTime <= c.end);
+      if (plpCaption) plpCaption.textContent = activeCap ? activeCap.text : "";
+
+      if (plpMeter && tl.meter) {
+        plpMeter.style.display = currentTime >= tl.meter.start ? "flex" : "none";
+      }
+    }
+
+    function seekTo(t) {
+      currentTime = Math.max(0, Math.min(tl.total_duration, t));
+      if (audioNarration) audioNarration.currentTime = currentTime;
+      if (audioSfx) audioSfx.currentTime = currentTime;
+      if (videoEl) videoEl.currentTime = currentTime;
+      updatePlayhead();
+    }
+
+    function togglePlay() {
+      if (isPlaying) {
+        pausePlayback();
+      } else {
+        startPlayback();
+      }
+    }
+
+    function startPlayback() {
+      if (currentTime >= tl.total_duration - 0.1) seekTo(0);
+      isPlaying = true;
+      $("#tlPlayBtn").innerHTML = icon("pause", "sm");
+
+      if (audioNarration) {
+        audioNarration.muted = voiceMuted;
+        audioNarration.play().catch(() => {});
+      }
+      if (audioSfx) {
+        audioSfx.muted = sfxMuted;
+        audioSfx.play().catch(() => {});
+      }
+      if (videoEl) {
+        videoEl.play().catch(() => {});
+      }
+
+      function loop() {
+        if (!isPlaying) return;
+        if (audioNarration && !audioNarration.paused) {
+          currentTime = audioNarration.currentTime;
+        } else if (videoEl && !videoEl.paused) {
+          currentTime = videoEl.currentTime;
+        } else {
+          currentTime += 0.05;
+        }
+
+        if (currentTime >= tl.total_duration) {
+          pausePlayback();
+          seekTo(tl.total_duration);
+          return;
+        }
+        updatePlayhead();
+        playTimer = requestAnimationFrame(loop);
+      }
+      playTimer = requestAnimationFrame(loop);
+    }
+
+    function pausePlayback() {
+      isPlaying = false;
+      if (playTimer) cancelAnimationFrame(playTimer);
+      if ($("#tlPlayBtn")) $("#tlPlayBtn").innerHTML = icon("play", "sm");
+      if (audioNarration) audioNarration.pause();
+      if (audioSfx) audioSfx.pause();
+      if (videoEl) videoEl.pause();
+    }
+
+    updateScale();
+    selectScene(0);
+
+    $("#tlPlayBtn").onclick = togglePlay;
+    $("#tlStopBtn").onclick = () => { pausePlayback(); seekTo(0); };
+
+    if ($("#tlToggleVoice")) {
+      $("#tlToggleVoice").onclick = () => {
+        voiceMuted = !voiceMuted;
+        if (audioNarration) audioNarration.muted = voiceMuted;
+        $("#lblVoice").textContent = voiceMuted ? "Voz (Muda)" : "Voz";
+      };
+    }
+
+    if ($("#tlToggleSfx")) {
+      $("#tlToggleSfx").onclick = () => {
+        sfxMuted = !sfxMuted;
+        if (audioSfx) audioSfx.muted = sfxMuted;
+        $("#lblSfx").textContent = sfxMuted ? "Som (Mudo)" : "Som";
+      };
+    }
+
+    $("#tlZoomIn").onclick = () => { pxPerSec = Math.min(70, Math.round(pxPerSec * 1.3)); updateScale(); };
+    $("#tlZoomOut").onclick = () => { pxPerSec = Math.max(10, Math.round(pxPerSec / 1.3)); updateScale(); };
+    $("#tlZoomFit").onclick = () => {
+      const bodyW = $("#tlBody").clientWidth;
+      pxPerSec = Math.max(10, Math.round((bodyW - 40) / tl.total_duration));
+      updateScale();
+    };
+
+    function onRulerClick(e) {
+      const rect = $("#tlRuler").getBoundingClientRect();
+      const clickX = e.clientX - rect.left + $("#tlBody").scrollLeft;
+      const t = clickX / pxPerSec;
+      seekTo(t);
+    }
+    $("#tlRuler").onclick = onRulerClick;
+
+    $("#tlOpenAiBtn").onclick = () => {
+      const d = $("#tlAiDrawer");
+      d.hidden = !d.hidden;
+      if (!d.hidden) $("#tlAiInput").focus();
+    };
+    $("#tlCloseAi").onclick = () => { $("#tlAiDrawer").hidden = true; };
+    $("#tlCancelAi").onclick = () => { $("#tlAiDrawer").hidden = true; };
+
+    $$(".ai-chip").forEach((chip) => {
+      chip.onclick = () => {
+        const scNum = tl.scenes[selectedIdx]?.scene_num || 1;
+        const tpl = chip.dataset.tpl.replace("{n}", scNum);
+        const input = $("#tlAiInput");
+        input.value = tpl;
+        input.focus();
+      };
+    });
+
+    $("#tlApplyAi").onclick = () => {
+      const instruction = $("#tlAiInput").value.trim();
+      if (!instruction) return alert("Por favor digite o que deseja corrigir.");
+      cleanupAudio();
+      act(async () => {
+        await api(`/api/jobs/${job.id}/ai-correct`, { method: "POST", body: { instruction } });
+        load(true);
+      }, "Aplicando correção com IA");
+    };
+
+    $("#tlAddSfxBtn") && ($("#tlAddSfxBtn").onclick = () => {
+      const d = $("#tlSfxDrawer");
+      d.hidden = !d.hidden;
+      if (!d.hidden) {
+        $("#sfxTimeLabel").textContent = `${currentTime.toFixed(1)}s`;
+      }
+    });
+    $("#tlCloseSfx") && ($("#tlCloseSfx").onclick = () => { $("#tlSfxDrawer").hidden = true; });
+
+    $$("[data-sfx]").forEach((b) => {
+      b.onclick = () => {
+        const sfxType = b.dataset.sfx;
+        cleanupAudio();
+        act(async () => {
+          await api(`/api/jobs/${job.id}/add-sfx`, { method: "POST", body: { at: currentTime, type: sfxType } });
+          $("#tlSfxDrawer").hidden = true;
+          await renderTimeline(body, job, load);
+        }, `Efeito '${sfxType}' adicionado aos ${currentTime.toFixed(1)}s`);
+      };
+    });
+
+    $("#tlMixerBtn") && ($("#tlMixerBtn").onclick = () => {
+      const d = $("#tlMixerDrawer");
+      d.hidden = !d.hidden;
+    });
+    $("#tlCloseMixer") && ($("#tlCloseMixer").onclick = () => { $("#tlMixerDrawer").hidden = true; });
+
+    $("#mixVoice") && ($("#mixVoice").oninput = (e) => { $("#lblMixVoice").textContent = `${Math.round(e.target.value * 100)}%`; });
+    $("#mixBgm") && ($("#mixBgm").oninput = (e) => { $("#lblMixBgm").textContent = `${Math.round(e.target.value * 100)}%`; });
+    $("#mixSfx") && ($("#mixSfx").oninput = (e) => { $("#lblMixSfx").textContent = `${Math.round(e.target.value * 100)}%`; });
+
+    $("#btnSaveMixer") && ($("#btnSaveMixer").onclick = () => {
+      const voice = parseFloat($("#mixVoice").value);
+      const bgm = parseFloat($("#mixBgm").value);
+      const sfx = parseFloat($("#mixSfx").value);
+      act(async () => {
+        await api(`/api/jobs/${job.id}/adjust-audio-levels`, { method: "POST", body: { voice, bgm, sfx } });
+        $("#tlMixerDrawer").hidden = true;
+        load(true);
+      }, "Níveis de áudio salvos");
+    });
+
+    if ($("#tlDirectRender")) {
+      $("#tlDirectRender").onclick = () => {
+        cleanupAudio();
+        act(async () => {
+          await api(`/api/jobs/${job.id}/start-render`, { method: "POST" });
+          load(true);
+        }, "Iniciando renderização");
+      };
+    }
   }
 
   function renderTab() {
     $$(".tabs-line button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
     const body = $("#tabBody");
     const d = job.data, script = d.script || {};
+    if (tab === "timeline") {
+      renderTimeline(body, job, load);
+      return;
+    }
     if (tab === "log") {
       body.innerHTML = `<div class="logs" id="logs">${logs.map(logLine).join("")}</div>`;
       const box = $("#logs"); box.scrollTop = box.scrollHeight;
@@ -571,6 +1449,8 @@ async function pageJob(id) {
     body.innerHTML = `<div class="card-body stack">
       <dl class="kv">
         ${d.format ? `<dt>Formato</dt><dd>${esc(d.format)}</dd>` : ""}
+        ${d.series_no ? `<dt>Série</dt><dd>#${esc(d.series_no)}</dd>` : ""}
+        ${script.rating != null ? `<dt>${esc(CFG.channels[job.channel]?.creative?.rating_label || "Nota")}</dt><dd><span class="score">${esc(script.rating)}/10</span></dd>` : ""}
         ${d.critique?.rounds?.length ? `<dt>Revisor</dt><dd>${critiqueView(d.critique)}</dd>` : ""}
         ${(script.characters || []).length ? `<dt>Personagens</dt><dd class="stack" style="gap:4px">${script.characters.map((c) => `<div><b>${esc(c.name)}</b> <span class="muted small">${esc(c.look || "")}</span></div>`).join("")}</dd>` : ""}
         <dt>Pauta</dt><dd>${esc(job.topic || "—")}${d.source?.link ? `<div><a class="small faint row" style="gap:4px;margin-top:4px" href="${esc(d.source.link)}" target="_blank" rel="noreferrer">${icon("ext", "sm")}<span class="ellipsis">${esc(d.source.link)}</span></a></div>` : ""}</dd>
@@ -600,6 +1480,19 @@ async function pageJob(id) {
 
   const emptyTab = (ic, msg) => `<div class="empty-state"><div class="ic">${icon(ic, "lg")}</div><p>${esc(msg)}</p></div>`;
 
+  function renderApproveCard(job) {
+    return `<div class="card approve render-approve" style="margin-top:16px">
+      <div class="card-head"><span class="ic">${icon("sliders")}</span><h3 class="grow">Pronto para renderizar</h3><span class="small muted">Confira a timeline com todas as faixas antes de iniciar o render</span></div>
+      <div class="card-body stack">
+        <p style="line-height:1.6">Todas as etapas anteriores (roteiro, narração, imagens, capa, legendas e som) foram concluídas.
+        Você pode conferir a timeline abaixo com todas as faixas sincronizadas, dar play para ouvir e ver a prévia ao vivo, clicar em qualquer cena para inspecionar ou regerar, ou pedir correções para a IA antes de renderizar.</p>
+        <div class="row wrap" style="justify-content:flex-end;gap:12px">
+          <button class="btn" id="tlTopAi">${icon("wand")}Pedir correção para IA</button>
+          <button class="btn primary" id="tlTopRender">${icon("play")}Aprovar e Iniciar Render</button>
+        </div>
+      </div></div>`;
+  }
+
   function approveCard(script, ch) {
     const mode = ch.upload?.mode || "manual";
     return `<div class="card approve" style="margin-top:16px">
@@ -624,6 +1517,22 @@ async function pageJob(id) {
   }
 
   function bindApprove() {
+    if (job.status === "waiting_approval" && job.stage === "render") {
+      $("#tlTopRender") && ($("#tlTopRender").onclick = () => act(async () => {
+        await api(`/api/jobs/${id}/start-render`, { method: "POST" });
+        load(true);
+      }, "Iniciando renderização"));
+      $("#tlTopAi") && ($("#tlTopAi").onclick = () => {
+        tab = "timeline";
+        renderTab();
+        const drawer = $("#tlAiDrawer");
+        if (drawer) {
+          drawer.hidden = false;
+          $("#tlAiInput")?.focus();
+        }
+      });
+      return;
+    }
     $("#apOk").onclick = () => act(async () => {
       const when = $("#apWhen").value;
       await api(`/api/jobs/${id}/approve`, { method: "POST", body: {
@@ -646,14 +1555,37 @@ async function pageJob(id) {
     if (job.kind === "fonte" && job.status === "done") return `<div class="banner ok" style="margin-top:16px"><span class="ic">${icon("scissors")}</span><div><b>${children.length} cortes criados</b>
       <div class="small muted">Cada corte segue pelo pipeline como um short. Veja a aba Cortes.</div></div></div>`;
     if (!p || job.status !== "done") return "";
+    const ttInfo = p.tiktok ? `<div class="small muted" style="margin-top:4px"><b>TikTok:</b> ${esc(p.tiktok.status || "Enviado")} (${esc(p.tiktok.privacy || "SELF_ONLY")})</div>` : (p.tiktok_error ? `<div class="small" style="color:var(--err);margin-top:4px">Aviso TikTok: ${esc(p.tiktok_error)}</div>` : "");
+    const igInfo = p.instagram ? `<div class="small muted" style="margin-top:4px"><b>Instagram:</b> <a href="${esc(p.instagram.permalink)}" target="_blank" rel="noreferrer">Ver Reel</a></div>` : (p.instagram_error ? `<div class="small" style="color:var(--err);margin-top:4px">Aviso Instagram: ${esc(p.instagram_error)}</div>` : "");
+    const ttBtn = `<button class="btn sm" id="btnPublishTikTok" title="Enviar para o TikTok">${icon("play", "sm")}Enviar para o TikTok</button>`;
+    const igBtn = `<button class="btn sm" id="btnPublishIg" title="Publicar no Instagram Reels">${icon("play", "sm")}Publicar no Reels</button>`;
     if (p.mode === "draft" && p.video_id) return `<div class="banner ok" style="margin-top:16px"><span class="ic">${icon("yt")}</span><div class="grow"><b>Rascunho no YouTube</b>
-      <div class="small muted">Subiu como privado, sem avisar os inscritos. Termine e publique pelo YouTube Studio.</div></div>
-      <a class="btn sm primary" href="${esc(p.studio_url || `https://studio.youtube.com/video/${p.video_id}/edit`)}" target="_blank" rel="noreferrer">${icon("ext", "sm")}Abrir no Studio</a></div>`;
+      <div class="small muted">Subiu como privado, sem avisar os inscritos. Termine e publique pelo YouTube Studio.</div>
+      ${p.thumbnail_error ? `<div class="small" style="color:var(--err);margin-top:4px">Aviso na capa: ${esc(p.thumbnail_error)}</div>` : ""}
+      ${ttInfo}${igInfo}</div>
+      <div class="row" style="gap:8px">
+        ${ttBtn}
+        ${igBtn}
+        <button class="btn sm" id="reuploadThumb" title="Reenviar thumbnail para o YouTube">${icon("upload", "sm")}Reenviar capa</button>
+        <a class="btn sm primary" href="${esc(p.studio_url || `https://studio.youtube.com/video/${p.video_id}/edit`)}" target="_blank" rel="noreferrer">${icon("ext", "sm")}Abrir no Studio</a>
+      </div></div>`;
     if (p.mode === "auto" && p.url) return `<div class="banner ok" style="margin-top:16px"><span class="ic">${icon("yt")}</span><div class="grow"><b>Publicado no YouTube</b>
-      <div class="small muted">${esc(p.privacy)}${p.publish_at ? ` · agendado para ${new Date(p.publish_at).toLocaleString()}` : ""}</div></div>
-      <a class="btn sm" href="${esc(p.url)}" target="_blank" rel="noreferrer">${icon("ext", "sm")}Abrir</a></div>`;
-    if (p.mode === "manual") return `<div class="banner ok" style="margin-top:16px"><span class="ic">${icon("check")}</span><div><b>Pronto para postar</b>
-      <div class="small muted">Baixe o MP4 e use o título e a descrição do roteiro.</div></div></div>`;
+      <div class="small muted">${esc(p.privacy)}${p.publish_at ? ` · agendado para ${new Date(p.publish_at).toLocaleString()}` : ""}</div>
+      ${p.thumbnail_error ? `<div class="small" style="color:var(--err);margin-top:4px">Aviso na capa: ${esc(p.thumbnail_error)}</div>` : ""}
+      ${ttInfo}${igInfo}</div>
+      <div class="row" style="gap:8px">
+        ${ttBtn}
+        ${igBtn}
+        <button class="btn sm" id="reuploadThumb" title="Reenviar thumbnail para o YouTube">${icon("upload", "sm")}Reenviar capa</button>
+        <a class="btn sm" href="${esc(p.url)}" target="_blank" rel="noreferrer">${icon("ext", "sm")}Abrir</a>
+      </div></div>`;
+    if (p.mode === "manual") return `<div class="banner ok" style="margin-top:16px"><span class="ic">${icon("check")}</span><div class="grow"><b>Pronto para postar</b>
+      <div class="small muted">Baixe o MP4 e use o título e a descrição do roteiro.</div>
+      ${ttInfo}${igInfo}</div>
+      <div class="row" style="gap:8px">
+        ${ttBtn}
+        ${igBtn}
+      </div></div>`;
     return "";
   }
 
@@ -996,12 +1928,17 @@ function bindSaveBar(rerender) {
 async function pageChannels(tab) {
   const ids = chanIds();
   channelTab = tab && CFG.channels[tab] ? tab : (channelTab && CFG.channels[channelTab] ? channelTab : ids[0]);
-  const yt = await api("/api/youtube").catch(() => ({}));
+  const [yt, tt] = await Promise.all([
+    api("/api/youtube").catch(() => ({})),
+    api("/api/tiktok").catch(() => ({})),
+  ]);
   const app = $("#app");
   const id = channelTab;
   const ch = CFG.channels[id];
   const n = ch.models.narracao;
   const ytc = yt[id] || {};
+  const ttc = tt[id] || {};
+  const igc = { configured: Boolean((ch.instagram?.access_token || CFG.instagram?.access_token) && (ch.instagram?.account_id || CFG.instagram?.account_id)) };
   const providerOpts = (stage) => META.model_stages[stage].map((p) => [p, META.provider_labels[p]]);
 
   const modelRow = (stage) => {
@@ -1081,13 +2018,24 @@ async function pageChannels(tab) {
           ${field(ch, "video.words_per_caption", "Palavras por bloco", "number", 'min="1" max="6"')}
           <div class="row" style="gap:16px">${field(ch, "video.caption_color", "Texto", "color")}${field(ch, "video.highlight_color", "Destaque", "color")}</div>
         </div>
+        <div class="fields">
+          ${select(ch, "video.transition_style", "Transição de Cenas", [
+            ["dynamic", "Dinâmica (Alterna estilos cinematográficos)"],
+            ["cut", "Corte Seco (Rápido / Padrão)"],
+            ["whip_pan", "Whip Pan (Chicote lateral veloz)"],
+            ["zoom_punch", "Zoom Punch (Impacto de aproximação)"],
+            ["cinematic", "Cinematográfica (Dissolve suave)"],
+            ["glitch", "Glitch (Tech / Distorção)"]
+          ])}
+          ${field(ch, "video.dynamic_emojis", "Emojis dinâmicos nas legendas", "switch")}
+        </div>
         ${field(ch, "video.caption_uppercase", "Legenda em maiúsculas", "switch")}</div>`)}
 
       ${section("Direção criativa", "Ritmo, som e narrativa. A IA marca no roteiro onde entram efeitos sonoros, ambiente e momentos de impacto; o render corta a cena em vários planos e a música abaixa quando a voz fala.", `<div class="card-body stack">
         <div class="fields">
           ${field(ch, "creative.cut_every", "Trocar de plano a cada (s)", "number", 'min="0" max="10" step="0.5"', "Shorts. 0 = um plano por cena")}
           ${field(ch, "creative.cut_every_long", "Planos no vídeo longo (s)", "number", 'min="0" max="20" step="0.5"')}
-          ${select(ch, "creative.sound_style", "Estilo de som", [["terror", "Terror (impactos, tensão, flash)"], ["tech", "Tech (swooshes limpos)"]])}
+          ${select(ch, "creative.sound_style", "Estilo de som", [["neutro", "Neutro (suave, serve para qualquer nicho)"], ["terror", "Terror (impactos, tensão, flash)"], ["tech", "Tech (swooshes limpos)"]])}
           ${field(ch, "creative.max_sfx", "Máx. efeitos por vídeo", "number", 'min="0" max="20"', "Cada efeito gasta créditos do ElevenLabs (com cache)")}
         </div>
         <div class="fields">
@@ -1101,6 +2049,25 @@ async function pageChannels(tab) {
           ${field(ch, "creative.emotion_tags", "Emoção na voz (eleven_v3)", "switch")}
           ${field(ch, "creative.loop_ending", "Final em loop", "switch")}
         </div>
+        <div class="sub-head">Marca do canal</div>
+        <label class="field"><span>Narrador fixo</span><textarea data-p="ch:creative.persona" class="prose" style="min-height:70px" placeholder="Ex.: uma professora animada que explica tudo com analogias do dia a dia">${esc(ch.creative?.persona || "")}</textarea>
+          <span class="hint">Personagem que narra todos os vídeos. Vazio = sem narrador fixo.</span></label>
+        <div class="fields">
+          ${field(ch, "creative.signoff", "Bordão final", "text", 'placeholder="Ex.: E essa você não sabia."', "Última frase de todo vídeo")}
+          ${field(ch, "creative.series_name", "Série (na descrição)", "text", 'placeholder="Ex.: Curiosidades — Episódio #{n}"', "{n} = número; {nnn} = com zeros")}
+          ${field(ch, "creative.series_badge", "Selo na capa", "text", 'placeholder="Ex.: EP. #{nnn}"')}
+          ${field(ch, "creative.series_start", "Começar a série em", "number", 'min="1"', "Usado só no primeiro vídeo da série")}
+        </div>
+        <div class="row wrap" style="gap:24px;align-items:flex-end">
+          ${field(ch, "creative.sonic_logo", "Assinatura sonora no loop", "switch")}
+          <div class="grow" style="min-width:280px">${field(ch, "creative.sonic_logo_prompt", "Som da assinatura (inglês)", "text", 'placeholder="Ex.: short bright two-note chime"', "Gerado uma vez no ElevenLabs e reaproveitado")}</div>
+        </div>
+        <div class="row wrap" style="gap:24px;align-items:flex-end">
+          ${field(ch, "creative.rating_meter", "Selo de nota no fim do vídeo", "switch")}
+          ${field(ch, "creative.rating_label", "Texto do selo", "text", 'placeholder="Ex.: NOTA, DIFICULDADE, HYPE REAL"')}
+          ${field(ch, "creative.rating_seconds", "Duração (s)", "number", 'min="1" max="5" step="0.2"')}
+        </div>
+        ${field(ch, "creative.rating_criteria", "A nota mede", "text", 'placeholder="Ex.: o quanto a receita é fácil de fazer em casa"', "A IA dá a nota de 0 a 10 no roteiro; uma barra animada mostra a nota nos últimos segundos do short")}
         <div class="sub-head">Revisor de roteiro</div>
         <div class="row wrap" style="gap:24px;align-items:flex-end">
           ${field(ch, "creative.review_script", "Revisar o roteiro antes da narração", "switch")}
@@ -1171,8 +2138,11 @@ async function pageChannels(tab) {
           ${field(ch, "cover.upload_thumbnail", "Enviar como thumbnail", "switch")}
         </div></div>`)}
 
-      ${section("Revisão e publicação", "Com a aprovação ligada, o short espera você revisar antes de publicar. Até o Google auditar o app, uploads pela API ficam privados.", `<div class="card-body stack">
-        ${field(ch, "review.require_approval", "Exigir minha aprovação antes de publicar", "switch")}
+      ${section("Revisão e publicação", "Com a aprovação ligada, o short espera você conferir a timeline antes de renderizar e aprovar antes de publicar. Até o Google auditar o app, uploads pela API ficam privados.", `<div class="card-body stack">
+        <div class="row wrap" style="gap:24px">
+          ${field(ch, "review.approve_before_render", "Pausar antes do render para conferir a timeline", "switch")}
+          ${field(ch, "review.require_approval", "Exigir minha aprovação antes de publicar", "switch")}
+        </div>
         <div class="fields">
           ${select(ch, "upload.mode", "Publicação", [["manual", "Manual: eu baixo e posto"], ["draft", "Rascunho no YouTube (privado)"], ["auto", "Automática: API do YouTube"]])}
           ${select(ch, "upload.privacy", "Visibilidade", [["private", "Privado"], ["unlisted", "Não listado"], ["public", "Público"]])}
@@ -1181,8 +2151,26 @@ async function pageChannels(tab) {
         <div class="voice-current"><span class="status-dot ${ytc.connected ? "on" : "off"}"></span>
           <div class="grow"><div style="font-weight:550">${ytc.connected ? `YouTube conectado${ytc.channel_title ? `: ${esc(ytc.channel_title)}` : ""}` : "YouTube não conectado"}</div>
             <div class="small faint">${!ytc.client_secret ? "Falta o client_secret.json (veja Provedores)" : ytc.connected ? (ytc.analytics ? "Upload automático e Analytics liberados" : "Reconecte para liberar o Analytics") : "Conecte para habilitar o upload automático e o Analytics"}</div></div>
-          ${ytc.connected ? `<button class="btn sm danger" id="ytOff">Desconectar</button>` : ""}
-          <a class="btn sm ${ytc.connected ? "" : "primary"}" href="/api/youtube/connect/${id}">${icon("yt", "sm")}${ytc.connected ? "Reconectar" : "Conectar"}</a></div></div>`)}
+          ${ytc.connected ? `<button class="btn sm" id="ytTest">${icon("refresh", "sm")}Testar v3</button><button class="btn sm danger" id="ytOff">Desconectar</button>` : ""}
+          <a class="btn sm ${ytc.connected ? "" : "primary"}" href="/api/youtube/connect/${id}">${icon("yt", "sm")}${ytc.connected ? "Reconectar" : "Conectar"}</a></div>
+
+        <div class="voice-current" style="margin-top:12px"><span class="status-dot ${ttc.connected ? "on" : "off"}"></span>
+          <div class="grow"><div style="font-weight:550">${ttc.connected ? `TikTok conectado${ttc.display_name ? `: @${esc(ttc.username || ttc.display_name)}` : ""}` : "TikTok não conectado"}</div>
+            <div class="small faint">${!ttc.client_configured ? "Falta o Client Key / Secret (veja Provedores)" : ttc.connected ? "Upload automático e rascunhos no TikTok liberados" : "Conecte para habilitar o envio direto para o TikTok"}</div></div>
+          ${ttc.connected ? `<button class="btn sm" id="ttTest">${icon("refresh", "sm")}Testar v2</button><button class="btn sm danger" id="ttOff">Desconectar</button>` : ""}
+          <a class="btn sm ${ttc.connected ? "" : "primary"}" href="/api/tiktok/connect/${id}">${icon("play", "sm")}${ttc.connected ? "Reconectar" : "Conectar TikTok"}</a></div>
+        <div class="fields" style="margin-top:8px">
+          ${select(ch, "upload.tiktok_privacy", "Visibilidade no TikTok", [["SELF_ONLY", "Privado / Rascunho (Recomendado)"], ["MUTUAL_FOLLOW_FRIENDS", "Amigos mútuos"], ["PUBLIC_TO_EVERYONE", "Público"]])}
+        </div>
+
+        <div class="voice-current" style="margin-top:12px"><span class="status-dot ${igc.configured ? "on" : "off"}"></span>
+          <div class="grow"><div style="font-weight:550">${igc.configured ? "Instagram Reels configurado" : "Instagram Reels não configurado"}</div>
+            <div class="small faint">${igc.configured ? "Upload de Reels via Meta Graph API v21.0 liberado" : "Configure o Access Token e Account ID do Instagram em Provedores"}</div></div>
+          ${igc.configured ? `<button class="btn sm" id="igTest">${icon("refresh", "sm")}Testar Graph v21</button>` : ""}
+        </div>
+        <div class="fields" style="margin-top:8px">
+          ${field(ch, "upload.publish_to_instagram", "Publicar Reels automaticamente junto com o upload", "switch")}
+        </div></div>`)}
 
       ${section("Agenda", "Cria shorts automaticamente nos horários definidos, todos os dias.", `<div class="card-body stack">
         ${field(ch, "schedule.enabled", "Agenda automática ligada", "switch")}
@@ -1202,6 +2190,64 @@ async function pageChannels(tab) {
   }, "Canal removido");
   learnBox(id, $("#learnBox"));
   $("#ytOff") && ($("#ytOff").onclick = () => act(async () => { await api(`/api/youtube/${id}`, { method: "DELETE" }); pageChannels(id); }, "YouTube desconectado"));
+  $("#ttOff") && ($("#ttOff").onclick = () => act(async () => { await api(`/api/tiktok/${id}`, { method: "DELETE" }); pageChannels(id); }, "TikTok desconectado"));
+  $("#ytTest") && ($("#ytTest").onclick = async () => {
+    const b = $("#ytTest");
+    b.disabled = true;
+    b.textContent = "Testando v3...";
+    try {
+      const res = await api(`/api/diagnostics?channel_id=${id}`);
+      const info = res.youtube?.[id];
+      if (info?.status === "ok") {
+        toast(`YouTube Data API v3 OK! Respondendo em ${info.latency_ms}ms (${info.channel_title})`);
+      } else {
+        toast(`Erro no YouTube: ${info?.error || "Desconectado"}`, true);
+      }
+    } catch (e) {
+      toast(`Falha ao testar YouTube: ${e.message}`, true);
+    } finally {
+      b.disabled = false;
+      b.innerHTML = `${icon("refresh", "sm")}Testar v3`;
+    }
+  });
+  $("#ttTest") && ($("#ttTest").onclick = async () => {
+    const b = $("#ttTest");
+    b.disabled = true;
+    b.textContent = "Testando v2...";
+    try {
+      const res = await api(`/api/diagnostics?channel_id=${id}`);
+      const info = res.tiktok?.[id];
+      if (info?.status === "ok") {
+        toast(`TikTok API v2 OK! Respondendo em ${info.latency_ms}ms (@${info.username || info.display_name})`);
+      } else {
+        toast(`Erro no TikTok: ${info?.error || "Desconectado"}`, true);
+      }
+    } catch (e) {
+      toast(`Falha ao testar TikTok: ${e.message}`, true);
+    } finally {
+      b.disabled = false;
+      b.innerHTML = `${icon("refresh", "sm")}Testar v2`;
+    }
+  });
+  $("#igTest") && ($("#igTest").onclick = async () => {
+    const b = $("#igTest");
+    b.disabled = true;
+    b.textContent = "Testando Graph v21...";
+    try {
+      const res = await api(`/api/diagnostics?channel_id=${id}`);
+      const info = res.instagram;
+      if (info?.status === "ok") {
+        toast(`Instagram Graph API v21 OK! Respondendo em ${info.latency_ms}ms (@${info.username || info.name || id})`);
+      } else {
+        toast(`Erro no Instagram: ${info?.error || "Desconectado"}`, true);
+      }
+    } catch (e) {
+      toast(`Falha ao testar Instagram: ${e.message}`, true);
+    } finally {
+      b.disabled = false;
+      b.innerHTML = `${icon("refresh", "sm")}Testar Graph v21`;
+    }
+  });
   $("#resetPrompts").onclick = () => act(async () => {
     for (const k of ["idea", "script", "long_script", "clip_select", "image_style"]) ch.prompts[k] = (await api(`/api/config/reset-prompt/${id}/${k}`, { method: "POST" })).value;
     markDirty();
@@ -1230,13 +2276,185 @@ async function pageChannels(tab) {
 }
 
 // ------------------------------------------------------------------ provedores
+function renderDiagnostics(data, container) {
+  const yt = data.youtube || {};
+  const tt = data.tiktok || {};
+  const el = data.elevenlabs || {};
+  const cli = data.cli || {};
+
+  const ytItems = Object.entries(yt);
+  const ttItems = Object.entries(tt);
+  const igItems = Object.entries(data.instagram || {});
+
+  container.innerHTML = `
+    <div class="diag-panel">
+      <div class="diag-head">
+        <div>
+          <h3 style="margin:0 0 4px;font-size:15px;display:flex;align-items:center;gap:8px">
+            <svg class="i" style="color:var(--accent)"><use href="#i-cpu"/></svg>Saúde & Conexão das APIs em Tempo Real
+          </h3>
+          <span class="small faint">Última checagem: ${new Date(data.timestamp).toLocaleTimeString()} • Chamadas executadas diretamente nos servidores oficiais</span>
+        </div>
+        <button class="btn xs" id="diagClose">Fechar diagnóstico</button>
+      </div>
+
+      <div class="diag-grid">
+        <!-- YouTube -->
+        <div class="diag-card">
+          <div class="diag-card-top">
+            <span class="diag-card-title"><svg class="i" style="color:#ef4444"><use href="#i-yt"/></svg>YouTube Data API</span>
+            <span class="diag-badge ${ytItems.some(([, r]) => r.status === 'ok') ? 'ok' : 'warn'}">v3 Oficial</span>
+          </div>
+          <div class="diag-card-desc">
+            ${ytItems.length === 0 ? '<span class="faint">Nenhum canal configurado</span>' : ytItems.map(([cid, r]) => `
+              <div class="diag-sub-item">
+                <span style="display:flex;align-items:center;gap:6px">
+                  <span class="status-dot ${r.status === 'ok' ? 'on' : r.status === 'disconnected' ? 'paused' : 'off'}"></span>
+                  <b>${esc(r.channel_title || cid)}</b>
+                </span>
+                <span class="small mono ${r.status === 'ok' ? '' : 'faint'}">${r.status === 'ok' ? `${r.latency_ms} ms` : esc(r.error || r.status)}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div class="diag-card-meta">
+            <span>Status: ${ytItems.every(([, r]) => r.status === 'ok') ? '🟢 Todas contas ativas' : '🟡 Verifique as conexões'}</span>
+            <span>Google Cloud</span>
+          </div>
+        </div>
+
+        <!-- TikTok -->
+        <div class="diag-card">
+          <div class="diag-card-top">
+            <span class="diag-card-title"><svg class="i" style="color:#06b6d4"><use href="#i-play"/></svg>TikTok Content Posting</span>
+            <span class="diag-badge ${ttItems.some(([, r]) => r.status === 'ok') ? 'ok' : 'warn'}">v2 Oficial</span>
+          </div>
+          <div class="diag-card-desc">
+            ${ttItems.length === 0 ? '<span class="faint">Nenhum canal configurado</span>' : ttItems.map(([cid, r]) => `
+              <div class="diag-sub-item">
+                <span style="display:flex;align-items:center;gap:6px">
+                  <span class="status-dot ${r.status === 'ok' ? 'on' : r.status === 'disconnected' ? 'paused' : 'off'}"></span>
+                  <b>${esc(r.display_name || r.username || cid)}</b>
+                </span>
+                <span class="small mono ${r.status === 'ok' ? '' : 'faint'}">${r.status === 'ok' ? `${r.latency_ms} ms` : esc(r.error || r.status)}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div class="diag-card-meta">
+            <span>Status: ${ttItems.every(([, r]) => r.status === 'ok') ? '🟢 Conectado' : ttItems.some(([, r]) => r.status === 'ok') ? '🟢 Parcial' : '🟡 Não conectado'}</span>
+            <span>ByteDance</span>
+          </div>
+        </div>
+
+        <!-- ElevenLabs -->
+        <div class="diag-card">
+          <div class="diag-card-top">
+            <span class="diag-card-title"><svg class="i" style="color:#a855f7"><use href="#i-volume"/></svg>ElevenLabs TTS</span>
+            <span class="diag-badge ${el.status === 'ok' ? 'ok' : 'err'}">v1 Oficial</span>
+          </div>
+          <div class="diag-card-desc">
+            ${el.status === 'ok' ? `
+              <div class="small">Plano: <b>${esc(el.tier)}</b></div>
+              <div class="small faint">Cota: ${el.used?.toLocaleString()} / ${el.limit?.toLocaleString()} caracteres</div>
+              <div class="small" style="color:var(--ok)">✓ Autenticação válida e ativa</div>
+            ` : `
+              <div class="small err">${esc(el.error || 'Não configurado')}</div>
+            `}
+          </div>
+          <div class="diag-card-meta">
+            <span>Latência: <b>${el.latency_ms ? `${el.latency_ms} ms` : '—'}</b></span>
+            <span>api.elevenlabs.io</span>
+          </div>
+        </div>
+
+        <!-- Instagram Reels -->
+        <div class="diag-card">
+          <div class="diag-card-top">
+            <span class="diag-card-title"><svg class="i" style="color:#e1306c"><use href="#i-instagram"/></svg>Instagram Reels</span>
+            <span class="diag-badge ${igItems.some(([, r]) => r.status === 'ok') ? 'ok' : 'warn'}">Graph v21</span>
+          </div>
+          <div class="diag-card-desc">
+            ${igItems.length === 0 ? '<span class="faint">Nenhum canal configurado</span>' : igItems.map(([cid, r]) => `
+              <div class="diag-sub-item">
+                <span style="display:flex;align-items:center;gap:6px">
+                  <span class="status-dot ${r.status === 'ok' ? 'on' : r.status === 'unconfigured' ? 'off' : 'paused'}"></span>
+                  <b>${esc(r.username || r.name || cid)}</b>
+                </span>
+                <span class="small mono ${r.status === 'ok' ? '' : 'faint'}">${r.status === 'ok' ? `${r.latency_ms} ms` : esc(r.error || r.status)}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div class="diag-card-meta">
+            <span>Status: ${igItems.every(([, r]) => r.status === 'ok') ? '🟢 Conectado' : igItems.some(([, r]) => r.status === 'ok') ? '🟢 Parcial' : '🟡 Não configurado'}</span>
+            <span>Meta Graph API</span>
+          </div>
+        </div>
+
+        <!-- Notificações (Telegram & Discord) -->
+        <div class="diag-card">
+          <div class="diag-card-top">
+            <span class="diag-card-title"><svg class="i" style="color:#38bdf8"><use href="#i-bell"/></svg>Notificações</span>
+            <span class="diag-badge ${(data.notifications?.telegram || data.notifications?.discord) ? 'ok' : 'faint'}">Webhooks</span>
+          </div>
+          <div class="diag-card-desc">
+            <div class="diag-sub-item">
+              <span style="display:flex;align-items:center;gap:6px">
+                <span class="status-dot ${data.notifications?.telegram ? 'on' : 'off'}"></span>
+                <b>Telegram Bot</b>
+              </span>
+              <span class="small faint mono">${data.notifications?.telegram ? 'ativo' : 'inativo'}</span>
+            </div>
+            <div class="diag-sub-item">
+              <span style="display:flex;align-items:center;gap:6px">
+                <span class="status-dot ${data.notifications?.discord ? 'on' : 'off'}"></span>
+                <b>Discord Webhook</b>
+              </span>
+              <span class="small faint mono">${data.notifications?.discord ? 'ativo' : 'inativo'}</span>
+            </div>
+          </div>
+          <div class="diag-card-meta">
+            <span>Alertas de revisão e publicação</span>
+            <span>Push Webhooks</span>
+          </div>
+        </div>
+
+        <!-- Motores e CLIs -->
+        <div class="diag-card">
+          <div class="diag-card-top">
+            <span class="diag-card-title"><svg class="i"><use href="#i-cpu"/></svg>Motores Locais</span>
+            <span class="diag-badge ok">CLI / PATH</span>
+          </div>
+          <div class="diag-card-desc">
+            ${['ffmpeg', 'claude', 'codex', 'agy'].map((k) => `
+              <div class="diag-sub-item">
+                <span style="display:flex;align-items:center;gap:6px">
+                  <span class="status-dot ${cli[k]?.status === 'ok' ? 'on' : 'off'}"></span>
+                  <b>${k}</b>
+                </span>
+                <span class="small faint mono">${cli[k]?.status === 'ok' ? 'pronto' : 'ausente'}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div class="diag-card-meta">
+            <span>Render & IAs locais</span>
+            <span>Sistema</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  const btnClose = $("#diagClose");
+  if (btnClose) btnClose.onclick = () => { container.innerHTML = ''; };
+}
+
 async function pageProviders() {
   const app = $("#app");
-  const [usage, yt] = await Promise.all([
+  const [usage, yt, tt] = await Promise.all([
     api("/api/elevenlabs/usage").catch((e) => ({ error: e.message })),
     api("/api/youtube").catch(() => ({})),
+    api("/api/tiktok").catch(() => ({})),
   ]);
   const hasSecret = Object.values(yt)[0]?.client_secret;
+  const hasTikTokConfig = Boolean(CFG.tiktok?.client_key && CFG.tiktok?.client_secret);
   const cli = META.cli;
   const pct = usage.limit ? Math.min(100, Math.round((usage.used / usage.limit) * 100)) : 0;
   const CLIS = [
@@ -1246,7 +2464,16 @@ async function pageProviders() {
     ["ffmpeg", "ffmpeg", "render do vídeo"],
   ];
   app.innerHTML = `
-    <div class="page-head"><div class="grow"><h1>Provedores</h1><p>Contas, chaves e limites de execução.</p></div></div>
+    <div class="page-head">
+      <div class="grow">
+        <h1>Provedores</h1>
+        <p>Contas, chaves e limites de execução.</p>
+      </div>
+      <div>
+        <button class="btn sm" id="btnDiagnose">${icon("refresh", "sm")}Diagnóstico das APIs</button>
+      </div>
+    </div>
+    <div id="diagContainer"></div>
     <div class="settings">
       ${section("CLIs de IA", "As IAs usam o login OAuth da sua conta. Variáveis *_API_KEY são removidas do ambiente delas, então nunca há cobrança por API.", `
         <div class="cli-list">${CLIS.map(([k, name, how]) => `<div class="cli"><span class="status-dot ${cli[k] ? "on" : "off"}"></span>
@@ -1285,10 +2512,101 @@ async function pageProviders() {
           <li>Em <b>Clientes</b>, crie um cliente OAuth do tipo <b>App para computador</b> e baixe o JSON para o caminho acima.</li>
           <li>Em <b>Canais</b>, clique em <b>Conectar</b> e escolha a conta e o canal certos. No aviso "app não verificado", vá em Avançado → Acessar.</li>
         </ol></div>`)}
+
+      ${section("TikTok", "Publicação de Shorts e vídeos verticais via Content Posting API v2 do TikTok.", `
+        <div class="card-body stack">
+          <div class="voice-current">
+            <span class="status-dot ${hasTikTokConfig ? "on" : "off"}"></span>
+            <div class="grow" style="font-weight:550">${hasTikTokConfig ? "Credenciais do TikTok configuradas" : "Credenciais do TikTok não configuradas"}</div>
+          </div>
+          <div class="fields">
+            ${field(CFG, "tiktok.client_key", "Client Key do TikTok")}
+            ${field(CFG, "tiktok.client_secret", "Client Secret do TikTok", "password", 'autocomplete="off"')}
+          </div>
+          <ol class="steps-list">
+            <li>Em <b>developers.tiktok.com</b>, crie um aplicativo.</li>
+            <li>Adicione os produtos <b>TikTok Login Kit</b> e <b>Content Posting API</b>.</li>
+            <li>Em <b>Redirect URI</b>, cadastre: <code>http://localhost:8765/api/tiktok/callback</code></li>
+            <li>Copie o <b>Client Key</b> e <b>Client Secret</b> nos campos acima e salve.</li>
+            <li>Na aba <b>Canais</b>, clique em <b>Conectar TikTok</b> para autorizar a conta do canal.</li>
+          </ol>
+        </div>`)}
+
+      ${section("Instagram Reels", "Publicação de Reels via Meta Graph API v21.0 com upload binário resumível direto.", `
+        <div class="card-body stack">
+          <div class="voice-current">
+            <span class="status-dot ${Boolean(CFG.instagram?.access_token && CFG.instagram?.account_id) ? "on" : "off"}"></span>
+            <div class="grow" style="font-weight:550">${Boolean(CFG.instagram?.access_token && CFG.instagram?.account_id) ? "Instagram Reels configurado" : "Instagram Reels não configurado"}</div>
+          </div>
+          <div class="fields">
+            ${field(CFG, "instagram.access_token", "Access Token (Long-Lived)", "password", 'autocomplete="off" placeholder="EAAB..."')}
+            ${field(CFG, "instagram.account_id", "Instagram Business Account ID", "text", 'placeholder="178414..."')}
+          </div>
+          <ol class="steps-list">
+            <li>Em <b>developers.facebook.com</b>, crie um app Empresarial e adicione a <b>Instagram Graph API</b>.</li>
+            <li>Gere um token com <code>instagram_basic</code>, <code>instagram_content_publish</code> e converta para <b>Long-Lived Token</b> (válido por 60 dias).</li>
+            <li>Obtenha o <b>Instagram Account ID</b> associado e preencha acima.</li>
+          </ol>
+        </div>`)}
+
+      ${section("Notificações (Telegram & Discord)", "Receba avisos instantâneos quando um short estiver pronto para revisão ou for publicado.", `
+        <div class="card-body stack">
+          <div class="sub-head">Telegram Bot</div>
+          <div class="row wrap" style="gap:24px">
+            ${field(CFG, "notifications.telegram.enabled", "Ativar alertas no Telegram", "switch")}
+          </div>
+          <div class="fields">
+            ${field(CFG, "notifications.telegram.bot_token", "Bot Token (do @BotFather)", "password", 'autocomplete="off" placeholder="123456:ABC-DEF..."')}
+            ${field(CFG, "notifications.telegram.chat_id", "Chat ID", "text", 'placeholder="123456789 ou -100..."')}
+          </div>
+          <div><button class="btn sm" id="btnTestTg">${icon("bell", "sm")}Enviar teste no Telegram</button></div>
+
+          <div class="sub-head" style="margin-top:16px">Discord Webhook</div>
+          <div class="row wrap" style="gap:24px">
+            ${field(CFG, "notifications.discord.enabled", "Ativar alertas no Discord", "switch")}
+          </div>
+          <div class="fields">
+            ${field(CFG, "notifications.discord.webhook_url", "URL do Webhook do Discord", "password", 'autocomplete="off" placeholder="https://discord.com/api/webhooks/..."')}
+          </div>
+          <div><button class="btn sm" id="btnTestDc">${icon("bell", "sm")}Enviar teste no Discord</button></div>
+        </div>`)}
     </div>
     ${saveBar()}`;
   bindFields(app);
   bindSaveBar(pageProviders);
+
+  $("#btnTestTg") && ($("#btnTestTg").onclick = () => act(async () => {
+    await api("/api/notifications/test", { method: "POST", body: { service: "telegram" } });
+  }, "Mensagem de teste enviada ao Telegram!"));
+
+  $("#btnTestDc") && ($("#btnTestDc").onclick = () => act(async () => {
+    await api("/api/notifications/test", { method: "POST", body: { service: "discord" } });
+  }, "Mensagem de teste enviada ao Discord!"));
+
+  const diagContainer = $("#diagContainer");
+  const btnDiagnose = $("#btnDiagnose");
+  if (btnDiagnose) {
+    btnDiagnose.onclick = async () => {
+      btnDiagnose.disabled = true;
+      btnDiagnose.innerHTML = `${icon("refresh", "sm")}Testando APIs...`;
+      diagContainer.innerHTML = `
+        <div class="diag-panel">
+          <div class="row" style="gap:12px;color:var(--text-2);font-size:13px">
+            <span class="status-dot paused"></span>
+            <span>Enviando requisições em tempo real para YouTube Data API v3, TikTok API v2, ElevenLabs e CLIs...</span>
+          </div>
+        </div>`;
+      try {
+        const data = await api("/api/diagnostics");
+        renderDiagnostics(data, diagContainer);
+      } catch (e) {
+        diagContainer.innerHTML = `<div class="banner err"><span class="ic">${icon("alert")}</span><div class="small">Falha no diagnóstico: ${esc(e.message)}</div></div>`;
+      } finally {
+        btnDiagnose.disabled = false;
+        btnDiagnose.innerHTML = `${icon("refresh", "sm")}Diagnóstico das APIs`;
+      }
+    };
+  }
 }
 
 // ------------------------------------------------------------------ início

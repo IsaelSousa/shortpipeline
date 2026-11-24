@@ -59,6 +59,30 @@ def _ts(t: float) -> str:
     return f"{int(h)}:{int(m):02d}:{s:05.2f}"
 
 
+EMOJI_KEYWORDS: dict[str, str] = {
+    "morte": "💀", "morreu": "💀", "matou": "💀", "cadáver": "💀", "fantasma": "👻",
+    "medo": "😨", "terror": "😱", "pânico": "😱", "grito": "😱", "sangue": "🩸",
+    "olho": "👁️", "olhos": "👀", "olhando": "👀", "olhou": "👀", "vi": "👀", "olhe": "👀",
+    "dinheiro": "💰", "milhões": "💸", "rico": "💰", "dólar": "💵", "lucro": "📈",
+    "fogo": "🔥", "queimou": "🔥", "chama": "🔥", "incêndio": "🔥",
+    "tempo": "⏱️", "segundo": "⏱️", "segundos": "⏱️", "minuto": "⏳", "hora": "⏰",
+    "coração": "❤️", "amor": "❤️", "vida": "✨", "alma": "✨",
+    "bomba": "💣", "explosão": "💥", "explodiu": "💥",
+    "rápido": "⚡", "velocidade": "⚡", "choque": "⚡", "raio": "⚡",
+    "segredo": "🤫", "mistério": "🔍", "porta": "🚪", "casa": "🏚️",
+    "carro": "🚗", "nave": "🚀", "espaço": "🪐", "planeta": "🪐", "alien": "👽",
+}
+
+TRANSITION_PRESETS: dict[str, list[str]] = {
+    "cut": ["fade"],
+    "whip_pan": ["smoothleft", "smoothright", "slideleft", "slideright", "wipeleft", "wiperight"],
+    "zoom_punch": ["zoomin", "circleopen", "rectcrop", "radial", "fadeblack"],
+    "cinematic": ["fade", "fadeblack", "dissolve", "fadewhite"],
+    "glitch": ["pixelize", "horzopen", "vertopen", "dissolve"],
+    "dynamic": ["smoothleft", "zoomin", "circleopen", "fadeblack", "slideright", "dissolve"],
+}
+
+
 def _clean(word: str) -> str:
     return word.replace("{", "").replace("}", "").replace("\\", "")
 
@@ -66,6 +90,7 @@ def _clean(word: str) -> str:
 def build_ass(words: list[dict], video: dict, dest: Path, frame: tuple[int, int] = (W, H),
               size: int | None = None) -> None:
     """Legenda estilo karaokê: blocos de N palavras, a palavra falada fica colorida e maior."""
+    import re
     fw, fh = frame
     landscape = fw > fh
     font = video.get("caption_font") or "Anton"
@@ -75,6 +100,7 @@ def build_ass(words: list[dict], video: dict, dest: Path, frame: tuple[int, int]
     hi = _ass_color(video.get("highlight_color") or "#FFD400")
     upper = video.get("caption_uppercase", True)
     per = max(1, int(video.get("words_per_caption") or 3))
+    emojis_on = bool(video.get("dynamic_emojis", True))
 
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -116,7 +142,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             for k, x in enumerate(g):
                 t = _clean(x["text"].upper() if upper else x["text"])
                 if k == j:
-                    parts.append(f"{{\\c{hi}\\fscx112\\fscy112}}{t}{{\\c{base}\\fscx100\\fscy100}}")
+                    t_lookup = re.sub(r"[^\w]", "", x["text"].lower())
+                    emoji = EMOJI_KEYWORDS.get(t_lookup, "") if emojis_on else ""
+                    highlight_word = f"{t} {emoji}".strip() if emoji else t
+                    parts.append(f"{{\\c{hi}\\fscx118\\fscy118}}{highlight_word}{{\\c{base}\\fscx100\\fscy100}}")
                 else:
                     parts.append(t)
             pop = "{\\fad(40,0)}" if j == 0 else ""
@@ -215,9 +244,11 @@ async def render_video(job_dir: Path, images: list[Path], durations: list[float]
                        ass: Path | None, video: dict, channel_id: str, dest: Path, log=None,
                        cover: Path | None = None, cover_seconds: float = 0.3,
                        frame: tuple[int, int] = (W, H), shots: list[list[float]] | None = None,
-                       beats: list[float] | None = None, sfx: Path | None = None, flash: bool = False) -> None:
+                       beats: list[float] | None = None, sfx: Path | None = None, flash: bool = False,
+                       meter: dict | None = None) -> None:
     """`shots`: durações dos planos de cada cena; `beats`: instantes (s) de susto/revelação, que ganham
-    tremor, flash (se `flash`) e um respiro na música; `sfx`: trilha de efeitos já mixada."""
+    tremor, flash (se `flash`) e um respiro na música; `sfx`: trilha de efeitos já mixada;
+    `meter`: selo de nota no fim do vídeo ({"score", "label", "start", "end", "color"})."""
     fw, fh = frame
     clips_dir = job_dir / "clips"
     clips_dir.mkdir(exist_ok=True)
@@ -258,11 +289,20 @@ async def render_video(job_dir: Path, images: list[Path], durations: list[float]
     if cover and cover.exists():
         cover_idx = nxt; nxt += 1
         inputs += ["-i", str(cover)]
+    meter_idx = None
+    if meter:
+        meter_idx = nxt; nxt += 1
+        mc = (meter.get("color") or "#22D3EE").lstrip("#")
+        tw, th, d = METER["track_w"], METER["track_h"], float(meter["end"]) + 0.5
+        inputs += ["-f", "lavfi", "-i",
+                   f"color=c=0x{mc}:s={tw}x{th}:r={FPS}:d={d:.2f}[l];color=c={METER['track_bg']}:s={tw}x{th}:r={FPS}:d={d:.2f}[r];"
+                   "[l][r]hstack"]
 
     f = []
     last = "[0:v]"
     offset = 0.0
-    transitions = ["fade", "fadeblack", "smoothleft", "circleopen", "fade", "dissolve"]
+    t_style = video.get("transition_style") or "dynamic"
+    transitions = TRANSITION_PRESETS.get(t_style, TRANSITION_PRESETS["dynamic"])
     for i in range(1, n):
         offset += durations[i - 1]
         out = f"[x{i}]"
@@ -274,6 +314,10 @@ async def render_video(job_dir: Path, images: list[Path], durations: list[float]
     flashes = ",".join(f"drawbox=x=0:y=0:w=iw:h=ih:color=white@0.6:t=fill:enable='between(t,{b:.3f},{b + 0.07:.3f})'"
                        for b in beats) if flash else ""
     chain = ",".join(x for x in (fx, flashes, f"ass='{ass}':fontsdir='{config.FONTS_DIR}'" if ass else "") if x) or "null"
+    if meter_idx is not None:
+        f.append(f"{last}{chain}[vpre]")
+        f += _meter_filters("[vpre]", meter_idx, meter, job_dir, "[vm]")
+        last, chain = "[vm]", "null"
     if cover_idx is not None:
         # capa nos primeiros frames: é o frame que o YouTube costuma usar no feed de Shorts
         f.append(f"{last}{chain}[vs]")
@@ -283,20 +327,26 @@ async def render_video(job_dir: Path, images: list[Path], durations: list[float]
         f.append(f"{last}{chain},format=yuv420p[v]")
 
     # áudio: voz + música (abaixa quando a voz fala e some antes dos sustos) + efeitos
+    # com suporte a mixer de volume individual (audio_levels)
+    levels = video.get("audio_levels") or {}
+    voice_mul = float(levels.get("voice", 1.0))
+    bgm_mul = float(levels.get("bgm", 1.0))
+    sfx_mul = float(levels.get("sfx", 1.0))
+
     mix = []
     if mi is not None:
-        f.append(f"[{na}:a]aresample=44100,aformat=channel_layouts=stereo,asplit=2[nv][nk]")
-        vol = float(video.get("music_volume") or 0.1) * 1.8
+        f.append(f"[{na}:a]aresample=44100,aformat=channel_layouts=stereo,volume={voice_mul:.2f},asplit=2[nv][nk]")
+        vol = float(video.get("music_volume") or 0.1) * 1.8 * bgm_mul
         dips = "".join(f",volume=0:enable='between(t,{b - 0.7:.2f},{b + 0.2:.2f})'" for b in beats)
         f.append(f"[{mi}:a]aresample=44100,aformat=channel_layouts=stereo,volume={vol:.3f}{dips},"
                  f"afade=t=out:st={max(total - 1.5, 0):.2f}:d=1.5[mraw]")
         f.append("[mraw][nk]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=400[m]")
         mix += ["[nv]", "[m]"]
     else:
-        f.append(f"[{na}:a]aresample=44100,aformat=channel_layouts=stereo[nv]")
+        f.append(f"[{na}:a]aresample=44100,aformat=channel_layouts=stereo,volume={voice_mul:.2f}[nv]")
         mix.append("[nv]")
     if si is not None:
-        f.append(f"[{si}:a]aresample=44100,aformat=channel_layouts=stereo[sx]")
+        f.append(f"[{si}:a]aresample=44100,aformat=channel_layouts=stereo,volume={sfx_mul:.2f}[sx]")
         mix.append("[sx]")
     if len(mix) > 1:
         f.append(f"{''.join(mix)}amix=inputs={len(mix)}:duration=first:dropout_transition=0:normalize=0,"
@@ -308,6 +358,38 @@ async def render_video(job_dir: Path, images: list[Path], durations: list[float]
                   "-maxrate", "8M", "-bufsize", "16M", "-r", str(FPS), "-c:a", "aac", "-b:a", "192k", "-ac", "2",
                   "-movflags", "+faststart", str(dest)],
                  timeout=max(1800, int(total * 8)))
+
+
+METER = {"x": 110, "y": 300, "w": 860, "h": 230, "track_x": 160, "track_y": 450, "track_w": 760, "track_h": 44,
+         "panel": "0x0B0F19", "track_bg": "0x32363E"}  # trilha = branco 16% sobre o painel, já misturado
+
+
+def _meter_filters(src: str, idx: int, m: dict, job_dir: Path, out: str) -> list[str]:
+    """Selo de nota (ex.: "NOTA 8/10"): painel escuro, barra que enche animada e a nota. O drawbox não anima, então a
+    barra vem de uma faixa [cor | fundo] com o dobro da largura, recortada por uma janela (crop) que anda."""
+    g = METER
+    t0, t1 = float(m["start"]), float(m["end"])
+    score = max(0.0, min(10.0, float(m.get("score") or 0)))
+    en = f"between(t,{t0:.3f},{t1:.3f})"
+    tdir = job_dir / "_meter"
+    tdir.mkdir(exist_ok=True)
+    (tdir / "label.txt").write_text((m.get("label") or "NOTA").upper(), encoding="utf-8")
+    (tdir / "score.txt").write_text(f"{score:g}/10", encoding="utf-8")
+    font = font_file("Anton")
+    fill_w = g["track_w"] * score / 10
+    prog = f"min(1,max(0,(t-{t0 + 0.15:.3f})/0.7))"
+    color = "0x" + (m.get("color") or "#22D3EE").lstrip("#")
+    alpha = f"min(1,max(0,(t-{t0:.3f})/0.25))"
+    return [
+        f"{src}drawbox=x={g['x']}:y={g['y']}:w={g['w']}:h={g['h']}:color={g['panel']}:t=fill:enable='{en}',"
+        f"drawbox=x={g['x']}:y={g['y']}:w={g['w']}:h={g['h']}:color={color}@0.9:t=5:enable='{en}'[mt]",
+        f"[{idx}:v]setsar=1,crop=w={g['track_w']}:h={g['track_h']}:x='{g['track_w']}-{fill_w:.1f}*{prog}':y=0[mf]",
+        f"[mt][mf]overlay=x={g['track_x']}:y={g['track_y']}:enable='{en}':eof_action=pass,"
+        f"drawtext=fontfile='{font}':textfile='{tdir / 'label.txt'}':fontsize=64:fontcolor=white:alpha='{alpha}':"
+        f"x={g['track_x']}:y={g['y'] + 40}:enable='{en}',"
+        f"drawtext=fontfile='{font}':textfile='{tdir / 'score.txt'}':fontsize=104:fontcolor={color}:alpha='{alpha}':"
+        f"x={g['track_x'] + g['track_w']}-text_w:y={g['y'] + 18}:enable='{en}'{out}",
+    ]
 
 
 async def render_clip(src: Path, ass: Path | None, dest: Path, cover: Path | None = None,
@@ -381,10 +463,11 @@ async def build_cover(bg: Path, text: str, opts: dict, dest_png: Path, dest_jpg:
         line_h = int(size * 1.16)
         total = line_h * len(lines)
         pos = opts.get("position") or "top"
+        has_badge = bool((opts.get("badge") or "").strip())
         if landscape:
-            y0 = {"top": 60, "center": (fh - total) // 2, "bottom": fh - total - 60}.get(pos, 60)
+            y0 = {"top": 120 if has_badge else 60, "center": (fh - total) // 2, "bottom": fh - total - 60}.get(pos, 60)
         else:
-            y0 = {"top": 230, "center": (fh - total) // 2, "bottom": fh - total - 360}.get(pos, 230)
+            y0 = {"top": 290 if has_badge else 230, "center": (fh - total) // 2, "bottom": fh - total - 360}.get(pos, 230)
         font = font_file(opts.get("font") or "Anton")
         base_c = (opts.get("text_color") or "#FFFFFF").lstrip("#")
         hi_c = (opts.get("highlight_color") or "#FFD400").lstrip("#")
@@ -395,6 +478,16 @@ async def build_cover(bg: Path, text: str, opts: dict, dest_png: Path, dest_jpg:
                 f"drawtext=fontfile='{font}':textfile='{tf}':fontsize={size}:fontcolor=0x{hi_c if hi else base_c}:"
                 f"borderw={max(6, size // 14)}:bordercolor=black:shadowx=0:shadowy={size // 16}:shadowcolor=black@0.55:"
                 f"x=(w-text_w)/2:y={y0 + i * line_h}")
+    badge = (opts.get("badge") or "").strip()
+    if badge:  # selo da série (ex.: CASO #047) no topo
+        bf = tmp / "badge.txt"
+        bf.write_text(badge.upper(), encoding="utf-8")
+        bsize = 54 if landscape else 64
+        hi = (opts.get("highlight_color") or "#FFD400").lstrip("#")
+        by = 24 if landscape else 130
+        vf.append(f"drawtext=fontfile='{font_file(opts.get('badge_font') or opts.get('font') or 'Anton')}':textfile='{bf}':"
+                  f"fontsize={bsize}:fontcolor=white:box=1:boxcolor=0x{hi}@0.92:boxborderw=18|30:"
+                  f"x=(w-text_w)/2:y={by}")
     await ffmpeg(["-i", str(bg), "-vf", ",".join(vf), "-frames:v", "1", str(dest_png)])
     # JPG para thumbnail do YouTube (limite de 2 MB)
     await ffmpeg(["-i", str(dest_png), "-q:v", "3", str(dest_jpg)])

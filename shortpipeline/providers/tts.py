@@ -82,6 +82,39 @@ async def elevenlabs_usage(providers_cfg: dict) -> dict:
             "reset_unix": d.get("next_character_count_reset_unix")}
 
 
+async def check_connection(providers_cfg: dict) -> dict:
+    """Verifica a integridade da conexão com a API do ElevenLabs."""
+    key = elevenlabs_key(providers_cfg)
+    if not key:
+        return {
+            "status": "unconfigured",
+            "api": "ElevenLabs API",
+            "version": "v1",
+            "error": "API Key não configurada",
+        }
+    try:
+        import time
+        t0 = time.time()
+        info = await elevenlabs_usage(providers_cfg)
+        latency_ms = round((time.time() - t0) * 1000)
+        return {
+            "status": "ok",
+            "api": "ElevenLabs API",
+            "version": "v1",
+            "tier": info.get("tier"),
+            "used": info.get("used"),
+            "limit": info.get("limit"),
+            "latency_ms": latency_ms,
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "api": "ElevenLabs API",
+            "version": "v1",
+            "error": str(e)[:300],
+        }
+
+
 async def _elevenlabs(text: str, dest: Path, opts: dict, providers_cfg: dict) -> list[Word]:
     key = elevenlabs_key(providers_cfg)
     voice = opts.get("voice_id")

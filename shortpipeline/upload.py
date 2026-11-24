@@ -98,6 +98,34 @@ def _credentials(channel_id: str):
     return creds
 
 
+def check_connection(channel_id: str) -> dict:
+    """Verifica a integridade da conexão com a YouTube Data API v3."""
+    import time
+    try:
+        from googleapiclient.discovery import build
+        t0 = time.time()
+        creds = _credentials(channel_id)
+        yt = build("youtube", "v3", credentials=creds, cache_discovery=False)
+        resp = yt.channels().list(part="snippet", mine=True).execute()
+        latency_ms = round((time.time() - t0) * 1000)
+        items = resp.get("items") or []
+        title = items[0]["snippet"]["title"] if items else None
+        return {
+            "status": "ok",
+            "api": "YouTube Data API",
+            "version": "v3",
+            "channel_title": title,
+            "latency_ms": latency_ms,
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "api": "YouTube Data API",
+            "version": "v3",
+            "error": str(e)[:300],
+        }
+
+
 def _upload_sync(channel_id: str, video: Path, meta: dict, opts: dict, progress,
                  thumbnail: Path | None = None) -> dict:
     from googleapiclient.discovery import build
@@ -133,13 +161,45 @@ def _upload_sync(channel_id: str, video: Path, meta: dict, opts: dict, progress,
               "privacy": status["privacyStatus"], "publish_at": publish_at,
               "uploaded_at": datetime.now(timezone.utc).isoformat()}
     if thumbnail and thumbnail.exists():
-        # thumbnail personalizada exige canal verificado por telefone; se falhar, o vídeo continua publicado
-        try:
-            yt.thumbnails().set(videoId=resp["id"],
-                                media_body=MediaFileUpload(str(thumbnail), mimetype="image/jpeg")).execute()
-            result["thumbnail"] = True
-        except Exception as e:
-            result["thumbnail_error"] = str(e)[:300]
+        # Para Shorts e vídeos recém-enviados (especialmente como rascunho/privado),
+        # o YouTube sobrescreve a thumbnail com um frame automático se a imagem for
+        # enviada enquanto o vídeo ainda estiver sendo processado nos servidores do Google.
+        # Aguardamos o processamento concluir (processingStatus == "succeeded") antes de definir a capa.
+        import time as _time
+        mimetype = "image/png" if thumbnail.suffix.lower() == ".png" else "image/jpeg"
+        t0 = _time.time()
+        applied = False
+        last_err = None
+        while _time.time() - t0 < 90:
+            try:
+                v_res = yt.videos().list(part="processingDetails,status", id=resp["id"]).execute()
+                items = v_res.get("items") or []
+                if items:
+                    pstatus = items[0].get("processingDetails", {}).get("processingStatus")
+                    if pstatus == "succeeded":
+                        yt.thumbnails().set(
+                            videoId=resp["id"],
+                            media_body=MediaFileUpload(str(thumbnail), mimetype=mimetype, resumable=True)
+                        ).execute()
+                        result["thumbnail"] = True
+                        applied = True
+                        break
+                    elif pstatus == "failed":
+                        last_err = "Processamento do vídeo falhou no YouTube"
+                        break
+            except Exception as e:
+                last_err = str(e)[:300]
+            _time.sleep(3)
+
+        if not applied:
+            try:
+                yt.thumbnails().set(
+                    videoId=resp["id"],
+                    media_body=MediaFileUpload(str(thumbnail), mimetype=mimetype, resumable=True)
+                ).execute()
+                result["thumbnail"] = True
+            except Exception as e:
+                result["thumbnail_error"] = str(last_err or e)[:300]
     return result
 
 

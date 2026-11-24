@@ -21,6 +21,7 @@ ASSETS_DIR = ROOT / "assets"
 FONTS_DIR = ASSETS_DIR / "fonts"
 MUSIC_DIR = ASSETS_DIR / "music"
 YOUTUBE_DIR = DATA_DIR / "youtube"
+TIKTOK_DIR = DATA_DIR / "tiktok"
 
 STAGES = ["ideia", "roteiro", "narracao", "imagens", "capa", "legendas", "som", "render", "revisao", "upload"]
 
@@ -277,6 +278,18 @@ DEFAULT_CONFIG: dict = {
     "youtube": {
         "client_secret_path": str(YOUTUBE_DIR / "client_secret.json"),
     },
+    "tiktok": {
+        "client_key": "",
+        "client_secret": "",
+    },
+    "instagram": {
+        "access_token": "",
+        "account_id": "",
+    },
+    "notifications": {
+        "telegram": {"enabled": False, "bot_token": "", "chat_id": ""},
+        "discord": {"enabled": False, "webhook_url": ""},
+    },
     "channels": {
         "terror": {
             "name": "Canal de Terror",
@@ -332,6 +345,12 @@ DEFAULT_CONFIG: dict = {
                 "review_script": True, "review_min_score": 8, "review_rounds": 1,
                 "characters": True, "character_refs": True,
                 "auto_learn": True, "learn_every_days": 7,
+                # marca do canal
+                "persona": "", "signoff": "",
+                "series_name": "", "series_badge": "", "series_start": 1,
+                "sonic_logo": False, "sonic_logo_prompt": "",
+                "rating_meter": False, "rating_label": "NOTA", "rating_seconds": 2.4,
+                "rating_criteria": "o quanto o tema é surpreendente ou relevante de verdade para o público do canal",
             },
             "cover": {
                 "enabled": True, "source": "ai", "scene": 1, "text_enabled": True,
@@ -347,7 +366,7 @@ DEFAULT_CONFIG: dict = {
                 "count": 5, "min_seconds": 25, "max_seconds": 60, "reframe": "face", "captions": True,
                 "cover_from_frame": True,
             },
-            "review": {"require_approval": True},
+            "review": {"require_approval": True, "approve_before_render": True},
             "upload": {"mode": "manual", "privacy": "private", "category_id": "24", "made_for_kids": False},
             "schedule": {"enabled": False, "times": ["10:00", "19:00"]},
         },
@@ -409,6 +428,12 @@ DEFAULT_CONFIG: dict = {
                 "review_script": True, "review_min_score": 8, "review_rounds": 1,
                 "characters": True, "character_refs": True,
                 "auto_learn": True, "learn_every_days": 7,
+                # marca do canal
+                "persona": "", "signoff": "",
+                "series_name": "", "series_badge": "", "series_start": 1,
+                "sonic_logo": False, "sonic_logo_prompt": "",
+                "rating_meter": False, "rating_label": "NOTA", "rating_seconds": 2.4,
+                "rating_criteria": "o quanto o tema é surpreendente ou relevante de verdade para o público do canal",
             },
             "cover": {
                 "enabled": True, "source": "ai", "scene": 1, "text_enabled": True,
@@ -424,7 +449,7 @@ DEFAULT_CONFIG: dict = {
                 "count": 5, "min_seconds": 25, "max_seconds": 60, "reframe": "face", "captions": True,
                 "cover_from_frame": True,
             },
-            "review": {"require_approval": True},
+            "review": {"require_approval": True, "approve_before_render": True},
             "upload": {"mode": "manual", "privacy": "private", "category_id": "28", "made_for_kids": False},
             "schedule": {"enabled": False, "times": ["12:00"]},
         },
@@ -441,6 +466,17 @@ def _merge_defaults(cfg: dict, defaults: dict) -> dict:
         elif isinstance(value, dict) and isinstance(cfg[key], dict) and key != "channels":
             _merge_defaults(cfg[key], value)
     return cfg
+
+
+LEGACY_CREATIVE = {"hype_meter": "rating_meter", "hype_label": "rating_label", "hype_seconds": "rating_seconds"}
+
+
+def _migrate_channel(ch: dict) -> None:
+    """Renomeia chaves antigas da configuração (ex.: hype_meter → rating_meter)."""
+    cr = ch.get("creative") or {}
+    for old, new in LEGACY_CREATIVE.items():
+        if old in cr:
+            cr.setdefault(new, cr.pop(old))
 
 
 def _channel_template(ch: dict | None = None) -> dict:
@@ -462,6 +498,7 @@ def load() -> dict:
         cfg = json.loads(CONFIG_PATH.read_text())
         _merge_defaults(cfg, DEFAULT_CONFIG)
         for cid, ch in cfg.get("channels", {}).items():
+            _migrate_channel(ch)
             _merge_defaults(ch, channel_defaults(cid, ch))
         return cfg
 

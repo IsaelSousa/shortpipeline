@@ -24,11 +24,19 @@ LIBRARY = {
         "whoosh": ("dark cinematic whoosh transition, low and airy", 1.0),
         "impact": ("deep cinematic horror impact boom with sub bass and metallic hit", 2.0),
         "riser": ("horror tension riser, dissonant strings building up, ending abruptly", 2.5),
+        "blip": ("short eerie low bell ding with a dark reverb tail", 1.0),
+    },
+    "neutro": {
+        "whoosh": ("soft subtle air whoosh transition", 0.8),
+        "impact": ("soft deep cinematic boom, warm and clean", 1.5),
+        "riser": ("gentle airy riser building up", 2.0),
+        "blip": ("soft pleasant two-note chime", 0.7),
     },
     "tech": {
         "whoosh": ("clean fast digital swoosh transition", 0.7),
         "impact": ("punchy modern tech hit with short glitch", 1.0),
         "riser": ("short synth riser building energy", 1.5),
+        "blip": ("short bright futuristic synth blip, clean UI confirmation sound", 0.6),
     },
 }
 
@@ -38,6 +46,7 @@ SYNTH = {
               "afade=t=in:d=0.35:curve=exp,afade=t=out:st=0.35:d=0.35",
     "impact": "sine=f=48:d=1.6,volume=2.5,afade=t=out:st=0.05:d=1.55:curve=exp",
     "riser": "anoisesrc=d=2.2:c=white:a=0.35,highpass=f=900,afade=t=in:d=2.1:curve=qsin,afade=t=out:st=2.1:d=0.1",
+    "blip": "sine=f=1320:d=0.18,volume=0.7,afade=t=out:st=0.04:d=0.14:curve=exp",
 }
 
 
@@ -75,7 +84,7 @@ async def generate(text: str, providers_cfg: dict, duration: float | None = None
 
 async def library_sound(name: str, style: str, providers_cfg: dict) -> Path:
     """Som fixo do estilo (whoosh/impact/riser); cai para a versão sintetizada se não der."""
-    text, dur = LIBRARY.get(style, LIBRARY["terror"])[name]
+    text, dur = LIBRARY.get(style, LIBRARY["neutro"])[name]
     try:
         return await generate(text, providers_cfg, dur)
     except ProviderError:

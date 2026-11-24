@@ -189,12 +189,51 @@ def pick_format(c: Ctx) -> str:
     return min(formats, key=lambda f: (recent.count(f) - 3 * float(scores.get(f, 0.5)), formats.index(f)))
 
 
+def rating_on(c: Ctx) -> bool:
+    """Selo de nota no fim do short (ex.: "HYPE REAL 8/10", "DIFICULDADE 3/10")."""
+    return bool(c.creative().get("rating_meter")) and c.kind == "short"
+
+
+def series_text(template: str, n: int) -> str:
+    return (template or "").replace("{nnn}", f"{n:03d}").replace("{n}", str(n))
+
+
+def assign_series(c: Ctx) -> int | None:
+    """Número da série (Caso #N) do short: o próximo depois do maior já usado no canal."""
+    cr = c.creative()
+    if c.kind != "short" or not (cr.get("series_name") or cr.get("series_badge")):
+        return None
+    if c.data.get("series_no"):
+        return int(c.data["series_no"])
+    used = [int(j["data"]["series_no"]) for j in db.list_jobs(c.channel_id, limit=2000)
+            if j["id"] != c.job["id"] and j["data"].get("series_no") and j["status"] != "canceled"]
+    n = max(used) + 1 if used else max(1, int(cr.get("series_start") or 1))
+    c.save(series_no=n)
+    return n
+
+
+def brand_rules(c: Ctx) -> str:
+    """Regras fixas da marca, para o revisor não apagar."""
+    cr = c.creative()
+    rules = []
+    if cr.get("persona"):
+        rules.append(f"narrador fixo: {cr['persona']}")
+    if cr.get("signoff"):
+        rules.append(f'a narração termina com o bordão "{cr["signoff"]}"')
+    if rating_on(c):
+        rules.append('o JSON tem "rating" (0 a 10)')
+    return ("\nRegras fixas do canal (mantenha no roteiro, não são problema): " + "; ".join(rules) + "\n") if rules else ""
+
+
 def creative_hint(c: Ctx, fmt: str) -> str:
     cr = c.creative()
     n = c.ch["models"]["narracao"]
     lines = ["\n\nDIREÇÃO CRIATIVA (siga e inclua os campos extras no JSON):"]
     if fmt:
-        lines.append(f"- Formato deste vídeo: {fmt}. Adapte a estrutura ao formato.")
+        others = [f for f in cr.get("formats") or [] if f.strip() and f != fmt]
+        lines.append(f"- Formato sugerido: {fmt}. Adapte a estrutura ao formato."
+                     + (f" Se ele não combinar com a pauta, troque pelo que combinar melhor desta lista: {others}. "
+                        'Diga no JSON o formato usado em "format" (texto exato da lista).' if others else ""))
     if cr.get("sound", True):
         lines.append(
             '- Em cada cena, além de narration e image_prompt, inclua: "sfx": até 2 efeitos sonoros '
@@ -209,6 +248,14 @@ def creative_hint(c: Ctx, fmt: str) -> str:
     if cr.get("loop_ending", True) and not c.is_long:
         lines.append("- A última frase deve emendar naturalmente na primeira, para o vídeo funcionar em loop "
                      "(sem pedir like, inscrição ou comentário no final).")
+    if cr.get("persona"):
+        lines.append(f"- Narrador fixo do canal (mantenha a voz e o jeito dele, sem atrasar o gancho): {cr['persona']}")
+    if cr.get("signoff"):
+        lines.append(f'- Termine a narração com o bordão do canal, exatamente assim: "{cr["signoff"]}". '
+                     "Ele é a última frase da última cena.")
+    if rating_on(c):
+        lines.append('- Inclua no JSON "rating": inteiro de 0 a 10, uma nota honesta para '
+                     f"{cr.get('rating_criteria') or 'o tema do vídeo'} (ela aparece num selo no fim do vídeo).")
     if cr.get("characters", True):
         lines.append(
             '- Inclua no JSON "characters": [{"name": "nome curto", "look": "aparência FIXA EM INGLÊS: idade, gênero, '
@@ -235,8 +282,22 @@ async def stage_roteiro(c: Ctx) -> None:
     if not scenes:
         raise ProviderError("Roteiro sem cenas")
     script["scenes"] = scenes
+    chosen = script.pop("format", None)
+    if chosen and chosen != fmt and chosen in (c.creative().get("formats") or []):
+        c.save(format=chosen)
+        c.log(f"Formato trocado pela IA para combinar com a pauta: {chosen}")
     if c.creative().get("review_script", True):
         script = await critique(c, script)
+    if script.get("rating") is not None:
+        try:
+            script["rating"] = max(0, min(10, round(float(str(script["rating"]).split("/")[0].replace(",", ".")))))
+        except ValueError:
+            script.pop("rating")
+    n = assign_series(c)
+    if n and c.creative().get("series_name"):
+        head = series_text(c.creative()["series_name"], n)
+        script["description"] = f"{head}\n\n{script.get('description') or ''}".strip()
+        c.log(f"Série: {head}")
     (c.dir / "script.json").write_text(json.dumps(script, ensure_ascii=False, indent=2))
     c.save(script=script)
     words = sum(len(s["narration"].split()) for s in scenes)
@@ -254,7 +315,7 @@ async def critique(c: Ctx, script: dict) -> dict:
         prompt = config.CRITIC_PROMPT.format(
             channel=c.ch["name"], niche=c.ch.get("niche", ""), min_score=min_score,
             kind="vídeos longos" if c.is_long else "Shorts",
-            insights=("\nO que já funcionou no canal:\n" + c.insights() + "\n") if c.insights() else "",
+            insights=(("\nO que já funcionou no canal:\n" + c.insights() + "\n") if c.insights() else "") + brand_rules(c),
             script=json.dumps(script, ensure_ascii=False))
         try:
             out = llm.extract_json(await c.text("critica", prompt))
@@ -461,7 +522,11 @@ async def stage_capa(c: Ctx) -> None:
         text = (c.data.get("cover_text_override") or script.get("cover_text") or default_cover_text(script)).strip()
     c.detail("montando capa")
     png, jpg = cdir / "cover.png", cdir / "cover.jpg"
-    await render.build_cover(Path(bg), text, cov, png, jpg, frame)
+    opts = dict(cov)
+    if c.data.get("series_no") and c.creative().get("series_badge"):
+        opts["badge"] = series_text(c.creative()["series_badge"], int(c.data["series_no"]))
+        opts.setdefault("highlight_color", c.ch["video"].get("highlight_color"))
+    await render.build_cover(Path(bg), text, opts, png, jpg, frame)
     c.save(cover={"image": str(png), "jpg": str(jpg), "bg": str(bg), "text": text})
     c.log(f"Capa pronta{': ' + text if text else ' (sem texto)'}")
 
@@ -542,7 +607,7 @@ async def stage_som(c: Ctx) -> None:
         c.save(sound=None)
         c.log("Desenho de som desligado")
         return
-    style = cr.get("sound_style") or ("terror" if c.ch["video"].get("effects") == "terror" else "tech")
+    style = cr.get("sound_style") or ("terror" if c.ch["video"].get("effects") == "terror" else "neutro")
     scenes = c.data["script"]["scenes"]
     durations = c.data["durations"]
     timings = scene_words(c)
@@ -561,7 +626,8 @@ async def stage_som(c: Ctx) -> None:
         c.detail(f"cena {i + 1}/{len(scenes)}")
         if i > 0 and cr.get("whoosh", True):
             events.append({"file": await sound.library_sound("whoosh", style, c.cfg["providers"]),
-                           "at": offset - 0.3, "volume": sfx_vol * 0.8})
+                           "at": offset - 0.3, "volume": sfx_vol * 0.8,
+                           "type": "whoosh", "label": "Whoosh (transição)", "scene": i + 1})
         beat = (sc.get("beat") or "").lower()
         if beat in ("scare", "reveal") and cr.get("beat_fx", True):
             first_sfx = next((x for x in sc.get("sfx") or [] if x.get("word")), None)
@@ -571,10 +637,13 @@ async def stage_som(c: Ctx) -> None:
             at = offset + rel
             beats.append(round(at, 3))
             events.append({"file": await sound.library_sound("impact", style, c.cfg["providers"]),
-                           "at": at - 0.05, "volume": sfx_vol * 1.2})
+                           "at": at - 0.05, "volume": sfx_vol * 1.2,
+                           "type": "impact", "label": f"Impacto ({'susto' if beat == 'scare' else 'revelação'})",
+                           "scene": i + 1})
             if at > 2.5:
                 events.append({"file": await sound.library_sound("riser", style, c.cfg["providers"]),
-                               "at": at - 2.3, "volume": sfx_vol * 0.6})
+                               "at": at - 2.3, "volume": sfx_vol * 0.6,
+                               "type": "riser", "label": "Tensão / Riser", "scene": i + 1})
         if have_key:
             for x in (sc.get("sfx") or [])[:2]:
                 if budget <= 0 or not x.get("sound"):
@@ -584,7 +653,8 @@ async def stage_som(c: Ctx) -> None:
                     continue
                 try:
                     f = await sound.generate(x["sound"], c.cfg["providers"], duration=2.0)
-                    events.append({"file": f, "at": offset + rel - 0.1, "volume": sfx_vol})
+                    events.append({"file": f, "at": offset + rel - 0.1, "volume": sfx_vol,
+                                   "type": "sfx", "label": x["sound"], "word": x.get("word"), "scene": i + 1})
                     budget -= 1
                 except ProviderError as e:
                     failed += 1
@@ -593,21 +663,49 @@ async def stage_som(c: Ctx) -> None:
                 try:
                     f = await sound.generate(sc["ambience"], c.cfg["providers"], duration=10.0, loop=True)
                     beds.append({"file": f, "start": offset, "dur": d + (render.XFADE if i < len(scenes) - 1 else 0),
-                                 "volume": amb_vol})
+                                 "volume": amb_vol, "sound": sc["ambience"], "scene": i + 1})
                 except ProviderError as e:
                     failed += 1
                     c.log(f"Ambiente \"{sc['ambience']}\" falhou: {e}", "warn")
         offset += d
+    script = c.data["script"]
+    if rating_on(c) and script.get("rating") is not None:
+        at = max(0.0, total - float(cr.get("rating_seconds") or 2.4))
+        events.append({"file": await sound.library_sound("blip", style, c.cfg["providers"]), "at": at,
+                       "volume": sfx_vol, "type": "blip", "label": "Selo de nota"})
+    if cr.get("sonic_logo") and cr.get("sonic_logo_prompt") and have_key:
+        try:  # assinatura sonora no ponto do loop (fim → começo)
+            f = await sound.generate(cr["sonic_logo_prompt"], c.cfg["providers"], duration=0.8)
+            events.append({"file": f, "at": max(0.0, total - 0.75), "volume": sfx_vol * 1.1,
+                           "type": "sonic_logo", "label": "Assinatura sonora"})
+        except ProviderError as e:
+            c.log(f"Assinatura sonora falhou: {e}", "warn")
     mix = c.dir / "sfx.wav"
     c.detail("mixando")
     await sound.build_mix(events, beds, total, mix)
-    c.save(sound={"mix": str(mix) if mix.exists() else None, "beats": beats, "events": len(events),
-                  "beds": len(beds), "style": style})
+    clean_events = [
+        {"type": e.get("type", "sfx"), "label": e.get("label", "Efeito"), "at": round(e["at"], 2),
+         "volume": round(e.get("volume", 0.5), 2), "word": e.get("word"), "scene": e.get("scene"),
+         "file": str(e["file"]) if e.get("file") else None}
+        for e in events
+    ]
+    clean_beds = [
+        {"sound": b.get("sound", "Ambiente"), "start": round(b["start"], 2), "dur": round(b["dur"], 2),
+         "volume": round(b.get("volume", 0.15), 2), "scene": b.get("scene"),
+         "file": str(b["file"]) if b.get("file") else None}
+        for b in beds
+    ]
+    c.save(sound={"mix": str(mix) if mix.exists() else None, "beats": beats, "events": clean_events,
+                  "beds": clean_beds, "style": style})
     c.log(f"Som: {len(events)} efeitos, {len(beds)} ambientes, {len(beats)} momentos de impacto"
           + (f" ({failed} falharam)" if failed else ""))
 
 
 async def stage_render(c: Ctx) -> None:
+    if c.ch.get("review", {}).get("approve_before_render", True):
+        if not c.data.get("approved_render"):
+            c.log("Pausado antes do render para conferência da timeline")
+            raise WaitingApproval()
     out = c.dir / "final.mp4"
     cover = c.data.get("cover")
     cov = c.ch.get("cover") or {}
@@ -628,11 +726,18 @@ async def stage_render(c: Ctx) -> None:
         snd = c.data.get("sound") or {}
         sfx = Path(snd["mix"]) if snd.get("mix") and Path(snd["mix"]).exists() else None
         style = snd.get("style") or cr.get("sound_style")
+        meter = None
+        rating = c.data["script"].get("rating")
+        if rating_on(c) and rating is not None:
+            total = sum(c.data["durations"])
+            meter = {"score": rating, "label": cr.get("rating_label") or "NOTA",
+                     "start": max(0.0, total - float(cr.get("rating_seconds") or 2.4)), "end": total,
+                     "color": c.ch["video"].get("highlight_color")}
         await render.render_video(c.dir, [Path(p) for p in c.data["images"]], c.data["durations"],
                                   c.dir / "narration.wav", ass, c.ch["video"], c.channel_id, out, log=log,
                                   cover=cover_png, cover_seconds=float(cov.get("in_video_seconds") or 0.3),
                                   frame=c.frame, shots=shots, beats=snd.get("beats") or [], sfx=sfx,
-                                  flash=style == "terror" and cr.get("beat_fx", True))
+                                  flash=style == "terror" and cr.get("beat_fx", True), meter=meter)
     size = out.stat().st_size / 1e6
     c.save(video=str(out))
     c.log(f"Vídeo pronto: {size:.1f} MB")
@@ -645,6 +750,13 @@ async def stage_revisao(c: Ctx) -> None:
     if c.data.get("approved"):
         c.log("Aprovado no painel")
         return
+    if not c.data.get("review_notified"):
+        from . import notify
+        c.save(review_notified=True)
+        try:
+            await notify.notify_event(c.cfg, "review_ready", c.job)
+        except Exception:
+            pass
     raise WaitingApproval()
 
 
@@ -677,7 +789,8 @@ async def stage_upload(c: Ctx) -> None:
     c.log("Enviando para o YouTube como rascunho (privado)" if mode == "draft"
           else f"Enviando para o YouTube ({opts.get('privacy')})")
     cover = c.data.get("cover") or {}
-    thumb = Path(cover["jpg"]) if cover.get("jpg") and (c.ch.get("cover") or {}).get("upload_thumbnail") else None
+    cov_path = cover.get("jpg") or cover.get("image")
+    thumb = Path(cov_path) if cov_path and Path(cov_path).exists() and (c.ch.get("cover") or {}).get("upload_thumbnail", True) else None
     meta = dict(c.data["script"])
     if c.is_long and c.data.get("chapters") and c.long_opts().get("chapters", True):
         meta["description"] = (meta.get("description") or "") + "\n\n" + chapters_text(c.data["chapters"])
@@ -690,6 +803,61 @@ async def stage_upload(c: Ctx) -> None:
         c.log(f"Thumbnail não enviada: {result['thumbnail_error']}", "warn")
     elif thumb:
         c.log("Capa enviada como thumbnail")
+
+    # Upload para o TikTok (Shorts / Vídeos verticais)
+    from . import tiktok
+    tt_status = tiktok.status(c.cfg, c.channel_id)
+    send_tt = bool(tt_status.get("connected") and (opts.get("publish_to_tiktok", True) or c.data.get("publish_to_tiktok")))
+    if send_tt and not c.is_long:
+        try:
+            cov_cfg = c.ch.get("cover") or {}
+            opts["cover_in_video"] = bool(cov_cfg.get("in_video", True))
+            if opts["cover_in_video"]:
+                opts["cover_timestamp_ms"] = int(float(cov_cfg.get("in_video_seconds") or 0.3) * 1000 / 2)
+            c.log("Enviando para o TikTok...")
+            tt_res = await tiktok.upload(
+                c.channel_id,
+                Path(c.data["video"]),
+                meta,
+                opts,
+                progress=lambda p: c.detail(f"TikTok: {p}%"),
+            )
+            result["tiktok"] = tt_res
+            c.save(publish={"mode": mode, **result})
+            c.log(f"Enviado para o TikTok ({tt_res.get('privacy')}): {tt_res.get('status')}")
+        except Exception as e:
+            c.log(f"Falha ao enviar para o TikTok: {e}", "warn")
+            result["tiktok_error"] = str(e)[:300]
+            c.save(publish={"mode": mode, **result})
+
+    # Upload para o Instagram Reels
+    from . import instagram
+    ig_status = instagram.status(c.cfg, c.channel_id)
+    send_ig = bool(ig_status.get("configured") and (opts.get("publish_to_instagram") or c.data.get("publish_to_instagram")))
+    if send_ig and not c.is_long:
+        try:
+            c.log("Enviando para o Instagram Reels...")
+            ig_res = await instagram.upload(
+                c.channel_id,
+                Path(c.data["video"]),
+                meta,
+                opts,
+                progress=lambda p: c.detail(f"Instagram: {p}%"),
+            )
+            result["instagram"] = ig_res
+            c.save(publish={"mode": mode, **result})
+            c.log(f"Enviado para o Instagram Reels: {ig_res.get('permalink')}")
+        except Exception as e:
+            c.log(f"Falha ao enviar para o Instagram Reels: {e}", "warn")
+            result["instagram_error"] = str(e)[:300]
+            c.save(publish={"mode": mode, **result})
+
+    # Disparar notificação de publicação concluída
+    from . import notify
+    try:
+        await notify.notify_event(c.cfg, "published", c.job)
+    except Exception:
+        pass
 
 
 # ------------------------------------------------------------------ cortes

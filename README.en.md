@@ -48,6 +48,18 @@ Every AI stage has a main provider and a fallback that takes over when the main 
 
 Per channel: cut pacing, sound design, emotion in the voice, loop endings (the last line flows into the first) and a list of **formats** the pipeline rotates through (e.g. "second-person POV", "myth or fact").
 
+### Channel branding
+
+Elements repeated in every video so viewers recognize the channel in a second, without delaying the hook:
+
+- **Fixed narrator**: one character who tells every video, described in a sentence.
+- **Sign-off line**: the last line of every video.
+- **Numbered series**: each short gets the next number (e.g. "Episode #12" in the description and an "EP. #012" badge on the cover).
+- **Rating badge**: the AI gives a 0–10 score in the script, using the criteria you set (e.g. how hard a recipe is, how overhyped a story is), and an animated bar shows it in the last seconds.
+- **Sonic logo**: a short sound, generated once, at the point where the video loops back to the start.
+
+Sound styles available: Neutral (fits any niche), Horror and Tech.
+
 ### Learning from Analytics
 
 Once the channel is connected, the pipeline periodically reads how the videos actually performed (views, % watched, retention curve) and an AI sums up **what to repeat and what to avoid**. These learnings go into the idea, script and critic prompts, and the formats that perform best get picked more often. The dashboard's **Analytics** page shows views, retention, subscribers, traffic sources and the videos published by the pipeline.
@@ -87,10 +99,10 @@ uv run shortpipeline          # opens at http://localhost:8765
 
 In the dashboard:
 
-- **Pipeline**: create shorts, long-form videos or clips and follow each stage live. In a video you can see the script, critic scores, images, sound and log, approve it, edit the script, regenerate an image or redo it from any stage.
+- **Pipeline**: create shorts, long-form videos or clips and follow each stage live. Inspect scripts, critic scores, images, sound and logs, preview with a multi-track editor timeline (scenes, subtitles, narration, sound effects/beds) and live mock-up before rendering, request AI corrections or edit directly, approve and rerun from any stage.
 - **Analytics**: channel metrics and what the pipeline has learned.
-- **Canais** (Channels): model per stage, voice, prompts, creative direction, visual style, captions, cover, review, publishing and automatic schedule.
-- **Provedores** (Providers): CLI status, ElevenLabs API key, transcription and YouTube connection.
+- **Canais** (Channels): model per stage, voice, prompts, creative direction, visual style, captions, cover, review (with pause before render option), publishing and automatic schedule.
+- **Provedores** (Providers): CLI status, ElevenLabs API key, transcription, YouTube and TikTok connections (including automatic thumbnail upload for drafts and scheduled videos).
 
 Background music: put MP3s in `assets/music/<channel-id>/`. One is picked at random per video.
 
@@ -102,6 +114,36 @@ Background music: put MP3s in `assets/music/<channel-id>/`. One is picked at ran
 4. In the dashboard, under **Canais**, click **Conectar YouTube** and pick the channel's account. Do it on the machine running the server (`localhost`), because the login redirect points to `localhost`.
 
 Until your Google app is verified, videos uploaded through the API stay private.
+
+## Connecting TikTok (upload and drafts)
+
+1. In [TikTok for Developers](https://developers.tiktok.com/), create a developer app.
+2. Add the **TikTok Login Kit** and **Content Posting API** products.
+3. In *Redirect URI*, configure: `http://localhost:8765/api/tiktok/callback`.
+4. In the dashboard, under **Provedores**, enter your **Client Key** and **Client Secret**.
+5. Under **Canais**, click **Conectar TikTok** to authorize the channel account. You can also upload any rendered video with 1 click using the **"Enviar para o TikTok"** button.
+
+## Publishing to Instagram Reels
+
+Direct publishing using Meta Graph API v21.0 with resumable binary upload (no public domain or ngrok needed):
+1. In [developers.facebook.com](https://developers.facebook.com/), create a Business App and add the **Instagram Graph API**.
+2. Generate a 60-day Long-Lived User Access Token with `instagram_basic` and `instagram_content_publish` permissions.
+3. Retrieve your **Instagram Business Account ID**.
+4. In the dashboard, under **Provedores** (or per-channel in **Canais**), enter the Access Token and Account ID.
+5. In **Canais → Revisão e publicação**, enable automatic Reels publishing on upload, or use the **"Publicar no Reels"** button in any completed video modal.
+
+## Real-time Notifications (Telegram & Discord)
+
+Get immediate notifications with cover preview when a video is waiting for approval or when it finishes publishing:
+- **Telegram**: create a bot via [@BotFather](https://t.me/BotFather), get your Token and Chat ID. In **Provedores**, fill them in and click "Enviar teste no Telegram".
+- **Discord**: in your Discord server channel, create a Webhook integration, paste the URL in **Provedores** and test it.
+
+## Google Trends Radar & Timeline Studio
+
+- **Hot Trending Topics**: when creating a new short, click **"🔥 Ver tendências no Google Trends"** to load current viral searches and news with 1 click.
+- **Audio Mixer**: in the multi-track timeline, use the **"Mixer de Áudio"** button to balance narration, background music, and sound effects with 0% to 200% sliders.
+- **Insert SFX at Playhead**: place the timeline needle anywhere and click **"Adicionar SFX"** to insert Whoosh, Impact, Riser, or Blip sound effects at that exact second.
+- **Cinematic Transitions & Dynamic Emojis**: configure scene transitions (*Whip Pan*, *Zoom Punch*, *Cinematic*, *Glitch*) and animated emoji captions under **Canais → Vídeo**.
 
 ## Network access
 

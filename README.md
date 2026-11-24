@@ -46,6 +46,18 @@ Cada etapa com IA tem um provedor principal e um de reserva, usado quando o prin
 
 Por canal: ritmo de cortes, desenho de som, emoção na voz, final em loop (a última frase emenda na primeira) e uma lista de **formatos** que o pipeline alterna (ex.: "POV em segunda pessoa", "mito ou verdade").
 
+### Marca do canal
+
+Elementos que se repetem em todo vídeo, para o público reconhecer o canal em um segundo, sem atrasar o gancho:
+
+- **Narrador fixo**: um personagem que conta todos os vídeos, descrito em uma frase.
+- **Bordão final**: a última frase de todo vídeo.
+- **Série numerada**: cada short ganha o próximo número (ex.: "Episódio #12" na descrição e "EP. #012" num selo na capa).
+- **Selo de nota**: a IA dá uma nota de 0 a 10 no roteiro, com o critério que você definir (ex.: dificuldade de uma receita, quanto uma notícia é exagerada), e uma barra animada mostra a nota nos últimos segundos.
+- **Assinatura sonora**: um som curto, gerado uma vez, no ponto em que o vídeo volta ao começo.
+
+Os estilos de som disponíveis são Neutro (serve para qualquer nicho), Terror e Tech.
+
 ### Aprendizado com o Analytics
 
 Com o canal conectado, o pipeline lê periodicamente o desempenho real dos vídeos (views, % assistida, curva de retenção) e uma IA resume **o que repetir e o que evitar**. Esses aprendizados entram nos prompts de pauta, roteiro e revisor, e os formatos que rendem mais passam a ser escolhidos mais vezes. A página **Analytics** do painel mostra views, retenção, inscritos, fontes de tráfego e os vídeos publicados pelo pipeline.
@@ -85,10 +97,10 @@ uv run shortpipeline          # abre em http://localhost:8765
 
 No painel:
 
-- **Pipeline**: crie shorts, vídeos longos ou cortes e acompanhe cada etapa ao vivo. Num vídeo dá para ver roteiro, notas do revisor, imagens, som e log, aprovar, editar o roteiro, regerar uma imagem ou refazer a partir de qualquer etapa.
+- **Pipeline**: crie shorts, vídeos longos ou cortes e acompanhe cada etapa ao vivo. Num vídeo dá para ver roteiro, notas do revisor, imagens, som e log, conferir a **timeline multi-faixas** estilo editor (cenas, legendas, locução, efeitos/ambientes) com preview em tempo real, pedir correções para a IA ou editar diretamente antes de renderizar, aprovar e refazer a partir de qualquer etapa.
 - **Analytics**: métricas do canal e o que o pipeline aprendeu.
-- **Canais**: modelos por etapa, voz, prompts, direção criativa, estilo visual, legendas, capa, revisão, publicação e agenda automática.
-- **Provedores**: status das CLIs, API key do ElevenLabs, transcrição e conexão com o YouTube.
+- **Canais**: modelos por etapa, voz, prompts, direção criativa, estilo visual, legendas, capa, revisão (com opção de aprovação antes do render), publicação e agenda automática.
+- **Provedores**: status das CLIs, API key do ElevenLabs, transcrição e conexões com o YouTube e TikTok (com upload automático de capa para rascunhos e agendados).
 
 Música de fundo: coloque MP3s em `assets/music/<id-do-canal>/`. Um é sorteado por vídeo.
 
@@ -100,6 +112,36 @@ Música de fundo: coloque MP3s em `assets/music/<id-do-canal>/`. Um é sorteado 
 4. No painel, em **Canais**, clique em **Conectar YouTube** e escolha a conta do canal. Faça isso pelo próprio computador (`localhost`), porque o retorno do login aponta para `localhost`.
 
 Enquanto o app do Google não passar pela verificação, os uploads feitos pela API ficam privados.
+
+## Conectar o TikTok (upload e rascunhos)
+
+1. No [TikTok for Developers](https://developers.tiktok.com/), crie um aplicativo de desenvolvedor.
+2. Adicione os produtos **TikTok Login Kit** e **Content Posting API**.
+3. Em *Redirect URI*, cadastre: `http://localhost:8765/api/tiktok/callback`.
+4. No painel, em **Provedores**, insira o **Client Key** e **Client Secret** do TikTok.
+5. Em **Canais**, clique em **Conectar TikTok** para autorizar a conta do canal. Você também pode enviar qualquer vídeo renderizado com 1 clique pelo botão **"Enviar para o TikTok"**.
+
+## Publicar no Instagram Reels
+
+Publicação direta de Reels usando a Meta Graph API v21.0 com upload binário resumível direto (sem necessidade de ngrok ou servidor público):
+1. Em [developers.facebook.com](https://developers.facebook.com/), crie um aplicativo Empresarial e adicione a **Instagram Graph API**.
+2. Gere um Access Token de longa duração (Long-Lived Token, 60 dias) com permissões `instagram_basic` e `instagram_content_publish`.
+3. Obtenha o seu **Instagram Business Account ID**.
+4. No painel, em **Provedores** (ou em **Canais**), insira o Access Token e o Account ID.
+5. Em **Canais → Revisão e publicação**, ative a opção de publicar Reels automaticamente no upload, ou use o botão **"Publicar no Reels"** no modal do vídeo.
+
+## Notificações em Tempo Real (Telegram e Discord)
+
+Receba avisos instantâneos com foto de capa quando um vídeo estiver aguardando aprovação ou for publicado:
+- **Telegram**: crie um bot via [@BotFather](https://t.me/BotFather), obtenha o Token e descubra seu Chat ID. Em **Provedores**, preencha e clique em "Enviar teste no Telegram".
+- **Discord**: em um canal do seu servidor Discord, crie uma Integração via Webhook, copie a URL e salve em **Provedores**.
+
+## Radar Google Trends & Edição na Timeline
+
+- **Tendências em Alta**: ao criar um novo short, clique em **"🔥 Ver tendências no Google Trends"** para carregar em tempo real as pautas e notícias mais buscadas no Brasil com 1 clique.
+- **Mixer de Áudio**: na timeline, use o botão **"Mixer de Áudio"** para ajustar os volumes da voz, da trilha sonora e dos efeitos com sliders de 0% a 200%.
+- **Inserir SFX na Agulha**: posicione o cursor na timeline e clique em **"Adicionar SFX"** para inserir Whoosh, Impacto, Riser, Blip ou efeitos sonoros personalizados no segundo exato.
+- **Transições Cinematográficas e Emojis**: configure em **Canais → Vídeo** transições como *Whip Pan*, *Zoom Punch*, *Cinematográfica* ou *Glitch*, além de animações de emojis automáticas nas legendas.
 
 ## Acesso pela rede
 

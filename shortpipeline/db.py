@@ -161,7 +161,10 @@ def reset_from(job_id: str, stage: str) -> dict:
     idx = order.index(stage)
     stages = {s: {"status": "pending", "error": None, "started": None, "ended": None, "detail": None}
               for s in order[idx:]}
-    return update_job(job_id, stages=stages, status="queued", stage=None, error=None)
+    data = {}
+    if "render" in order and idx <= order.index("render"):
+        data["approved_render"] = False
+    return update_job(job_id, stages=stages, status="queued", stage=None, error=None, data=data if data else None)
 
 
 def delete_job(job_id: str) -> None:
