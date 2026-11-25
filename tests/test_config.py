@@ -5,7 +5,7 @@ def test_load_creates_defaults(fresh_config):
     cfg = fresh_config.load()
     assert fresh_config.CONFIG_PATH.exists()
     assert {"general", "providers", "channels"} <= set(cfg)
-    assert {"terror", "tech"} <= set(cfg["channels"])
+    assert cfg["channels"]  # vem com canais de exemplo para editar
     for ch in cfg["channels"].values():
         assert set(fresh_config.MODEL_STAGES) <= set(ch["models"])
 
@@ -47,3 +47,27 @@ def test_new_channel_config_has_every_stage(fresh_config):
     ch = fresh_config.new_channel_config("Receitas")
     assert ch["name"] == "Receitas"
     assert set(fresh_config.MODEL_STAGES) <= set(ch["models"])
+
+
+def test_new_channel_is_neutral(fresh_config):
+    """Canal novo não herda nada de um nicho: nem terror, nem tecnologia."""
+    ch = fresh_config.new_channel_config("Jardinagem")
+    assert ch["niche"] == "" and ch["idea"]["source"] == "llm" and not ch["idea"]["rss_urls"]
+    assert ch["video"]["effects"] == "none" and ch["creative"]["sound_style"] == "neutro"
+    text = " ".join([*ch["prompts"].values(), *ch["creative"]["formats"]]).lower()
+    for word in ("terror", "horror", "medo", "tecnologia", "tech", "gadget", "neon", "arrepiante"):
+        assert word not in text, word
+    assert ch["prompts"]["script"] == fresh_config.GENERIC_SCRIPT_PROMPT
+    # mexer num canal novo não altera o modelo dos próximos
+    ch["creative"]["formats"].append("x")
+    assert "x" not in fresh_config.new_channel_config("Outro")["creative"]["formats"]
+
+
+def test_existing_channels_keep_their_style_defaults(fresh_config):
+    fresh_config.CONFIG_PATH.write_text(json.dumps({"general": {}, "providers": {}, "channels": {
+        "meuterror": {"name": "A", "creative": {"sound_style": "terror"}},
+        "minhacozinha": {"name": "B", "creative": {"sound_style": "neutro"}},
+    }}))
+    chans = fresh_config.load()["channels"]
+    assert chans["meuterror"]["prompts"]["script"] == fresh_config.TERROR_SCRIPT_PROMPT
+    assert chans["minhacozinha"]["prompts"]["script"] == fresh_config.GENERIC_SCRIPT_PROMPT

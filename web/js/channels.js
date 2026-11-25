@@ -173,6 +173,7 @@ async function pageChannels(tab) {
         <div class="row wrap" style="gap:24px;align-items:flex-end">
           ${field(ch, "creative.auto_learn", "Aprender com o Analytics", "switch")}
           ${field(ch, "creative.learn_every_days", "Reanalisar a cada (dias)", "number", 'min="1" max="60"')}
+          ${field(ch, "creative.learn_topics", "Escolher temas pelo Analytics", "switch")}
         </div>
         <div id="learnBox" class="learn-box"><div class="skeleton" style="height:60px"></div></div>
       </div>`)}

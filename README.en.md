@@ -80,7 +80,7 @@ Before rendering, the video's **Timeline** tab shows the tracks like an editor d
 
 ### Learning from Analytics
 
-Once the channel is connected, the pipeline periodically reads how the videos actually performed (views, % watched, retention curve) and an AI sums up **what to repeat and what to avoid**. These learnings go into the idea, script and critic prompts, and the formats that perform best get picked more often. The dashboard's **Analytics** page shows views, retention, subscribers, traffic sources and the videos published by the pipeline.
+Once the channel is connected, the pipeline periodically reads how the videos actually performed (views, % watched, retention curve) and an AI groups the videos by **theme**, scores each theme and sums up **what to repeat and what to avoid**. The themes and each video's numbers are the main criterion of the idea stage: it generates candidates in the best-performing themes (with new stories) and the editor drops the ones from themes that underperformed. The channel's editorial rules still take precedence. The analysis also suggests new topics, which become a Short in one click under **Canais → Aprendizado automático**, where the **Escolher temas pelo Analytics** switch lives. These learnings go into the idea, script and critic prompts, and the formats that perform best get picked more often. The dashboard's **Analytics** page shows views, retention, subscribers, traffic sources and the videos published by the pipeline.
 
 ### Long-form videos
 
@@ -120,17 +120,17 @@ In the dashboard:
 
 - **Pipeline**: create shorts, long-form videos or clips and follow each stage live. In a video you can see the script, critic scores, images, sound, timeline and log, then approve it, edit it or redo it from any stage.
 - **Analytics**: channel metrics and what the pipeline has learned.
-- **Canais** (Channels): model per stage, voice, prompts, creative direction, visual style, captions, cover, review (optionally approving before the render), publishing and automatic schedule.
+- **Canais** (Channels): model per stage, voice, prompts, creative direction, visual style, captions, cover, review (optionally approving before the render), publishing and automatic schedule. The horror and tech channels that come with the install are only examples. A channel created with **Novo canal** (New channel) starts neutral, with nothing niche-specific in its prompts, formats, effects or sounds: fill in the niche and adjust the rest.
 - **Provedores** (Providers): CLI status, ElevenLabs API key, transcription, YouTube, Instagram, notifications and connection diagnostics.
 
 ### Your own sounds and music
 
 **Background music**: put MP3s in `assets/music/<channel-id>/`. One is picked at random per video. The folder is ignored by git.
 
-A track that only fits some stories (e.g. a Christmas jingle) goes in a `music.json` in the same folder, describing when to use it:
+A track that only fits some stories (e.g. a birthday tune) goes in a `music.json` in the same folder, describing when to use it:
 
 ```json
-{"christmas-jingle.mp3": "stories set at Christmas: Santa, presents, Christmas Eve dinner"}
+{"birthday.mp3": "videos about a birthday or party: cake, candles, guests"}
 ```
 
 The script AI gets these descriptions and only picks the track when the story fits. The choice shows on the Roteiro (Script) tab and in the script's `"music"` field, which you can edit. The other tracks in the folder are still picked at random for the other videos; if there are none, the video has no music.
@@ -138,17 +138,17 @@ The script AI gets these descriptions and only picks the track when the story fi
 **Effects and ambience**: create a folder in `data/sound-packs/` (also ignored by git, for sounds you can't redistribute, such as Pixabay's) and name the files after the kind of sound:
 
 ```
-data/sound-packs/my-horror-sounds/
-  pack.json        {"styles": ["terror"], "tags": {"ambience": ["paranormal", "eerie"]}}
-  impact.mp3       used on scares and reveals instead of the default impact
-  scream-1.mp3     variations of the same sound: one is picked at random each time
-  scream-2.mp3
+data/sound-packs/my-sounds/
+  pack.json        {"styles": ["neutro"], "tags": {"ambience": ["cafe", "office"]}}
+  impact.mp3       used on reveals instead of the default impact
+  applause-1.mp3   variations of the same sound: one is picked at random each time
+  applause-2.mp3
   ambience-1.mp3   default ambience when ElevenLabs isn't available
   ambience-rain.mp3
 ```
 
 - `whoosh`, `impact`, `riser` and `blip` replace the default transition and beat sounds.
-- Any other name (`scream`, `door`, `thunder`…) becomes an effect the script can ask for. It's used when the effect's description contains the word, in English or Portuguese (e.g. "woman screaming" or "grito" use a `scream`). The script AI gets the list of available sounds.
+- Any other name (`applause`, `door`, `laugh`…) becomes an effect the script can ask for. It's used when the effect's description contains the word, in English or Portuguese (e.g. "crowd clapping" or "palmas" use an `applause`). The script AI gets the list of available sounds.
 - `ambience` and `ambience-<word>` are ambience beds, picked from the scene's description.
 - `pack.json` is optional. `styles` limits the pack to channel sound styles, and `tags` adds keywords.
 - In the timeline, **Adicionar SFX** (Add SFX) lists your sounds under **Sua biblioteca** (Your library).

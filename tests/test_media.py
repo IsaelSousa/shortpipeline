@@ -44,7 +44,7 @@ def test_unknown_sound_style_falls_back_to_neutral():
 
 def test_build_ass_highlights_each_word(tmp_path):
     dest = tmp_path / "subs.ass"
-    render.build_ass(words("uma casa no fim da rua"), {"words_per_caption": 3, "highlight_color": "#FF0000"}, dest)
+    render.build_ass(words("misture a farinha com o iogurte"), {"words_per_caption": 3, "highlight_color": "#FF0000"}, dest)
     text = dest.read_text()
     dialogues = [ln for ln in text.splitlines() if ln.startswith("Dialogue:")]
     assert len(dialogues) == 6  # uma linha por palavra falada
@@ -76,15 +76,15 @@ def test_special_music_only_when_the_script_asks(tmp_path, monkeypatch):
 
     folder = tmp_path / "music" / "canal"
     folder.mkdir(parents=True)
-    for name in ("normal.mp3", "natal.mp3"):
+    for name in ("normal.mp3", "festa.mp3"):
         (folder / name).write_bytes(b"x")
-    (folder / "music.json").write_text(json.dumps({"natal.mp3": "histórias de Natal", "sumiu.mp3": "não existe"}))
+    (folder / "music.json").write_text(json.dumps({"festa.mp3": "vídeos de festa", "sumiu.mp3": "não existe"}))
     monkeypatch.setattr(config, "MUSIC_DIR", tmp_path / "music")
 
     common, special = render.music_tracks("canal")
     assert [p.name for p in common] == ["normal.mp3"]
-    assert special == {"natal.mp3": "histórias de Natal"}
-    assert render.pick_music("canal", "natal.mp3").name == "natal.mp3"
+    assert special == {"festa.mp3": "vídeos de festa"}
+    assert render.pick_music("canal", "festa.mp3").name == "festa.mp3"
     assert {render.pick_music("canal").name for _ in range(20)} == {"normal.mp3"}
     assert render.pick_music("canal", "outra.mp3").name == "normal.mp3"
 

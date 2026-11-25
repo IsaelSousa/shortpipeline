@@ -78,7 +78,7 @@ Em **Canais → Vídeo** ficam as transições entre cenas (*Whip Pan*, *Zoom Pu
 
 ### Aprendizado com o Analytics
 
-Com o canal conectado, o pipeline lê periodicamente o desempenho real dos vídeos (views, % assistida, curva de retenção) e uma IA resume **o que repetir e o que evitar**. Esses aprendizados entram nos prompts de pauta, roteiro e revisor, e os formatos que rendem mais passam a ser escolhidos mais vezes. A página **Analytics** do painel mostra views, retenção, inscritos, fontes de tráfego e os vídeos publicados pelo pipeline.
+Com o canal conectado, o pipeline lê periodicamente o desempenho real dos vídeos (views, % assistida, curva de retenção) e uma IA agrupa os vídeos por **tema**, dá uma nota a cada tema e resume **o que repetir e o que evitar**. Os temas e os números de cada vídeo são o critério principal da etapa de pauta: ela gera candidatas nos temas que mais renderam (com histórias novas) e o editor descarta as dos temas que renderam pouco. As regras editoriais do canal continuam acima disso. A análise também sugere pautas novas, que viram Short com um clique em **Canais → Aprendizado automático**, onde fica a chave **Escolher temas pelo Analytics**. Esses aprendizados entram nos prompts de pauta, roteiro e revisor, e os formatos que rendem mais passam a ser escolhidos mais vezes. A página **Analytics** do painel mostra views, retenção, inscritos, fontes de tráfego e os vídeos publicados pelo pipeline.
 
 ### Vídeos longos
 
@@ -118,17 +118,17 @@ No painel:
 
 - **Pipeline**: crie shorts, vídeos longos ou cortes e acompanhe cada etapa ao vivo. Num vídeo dá para ver roteiro, notas do revisor, imagens, som, timeline e log, aprovar, editar e refazer a partir de qualquer etapa.
 - **Analytics**: métricas do canal e o que o pipeline aprendeu.
-- **Canais**: modelos por etapa, voz, prompts, direção criativa, estilo visual, legendas, capa, revisão (com opção de aprovar antes do render), publicação e agenda automática.
+- **Canais**: modelos por etapa, voz, prompts, direção criativa, estilo visual, legendas, capa, revisão (com opção de aprovar antes do render), publicação e agenda automática. Os canais de terror e de tecnologia que vêm na instalação são só exemplos. Um canal criado com **Novo canal** começa neutro, sem nada de nicho nos prompts, formatos, efeitos ou sons: preencha o nicho e ajuste o resto.
 - **Provedores**: status das CLIs, API key do ElevenLabs, transcrição, YouTube, Instagram, avisos e diagnóstico das conexões.
 
 ### Sons e música próprios
 
 **Música de fundo**: coloque MP3s em `assets/music/<id-do-canal>/`. Um é sorteado por vídeo. A pasta fica fora do git.
 
-Uma música que só faz sentido em certas histórias (ex.: um jingle de Natal) vai num `music.json` na mesma pasta, com a descrição de quando usar:
+Uma música que só faz sentido em certas histórias (ex.: um parabéns para festas) vai num `music.json` na mesma pasta, com a descrição de quando usar:
 
 ```json
-{"jingle-de-natal.mp3": "histórias que se passam no Natal: Papai Noel, ceia, presentes"}
+{"parabens.mp3": "vídeos sobre aniversário ou festa: bolo, velas, convidados"}
 ```
 
 A IA do roteiro recebe essas descrições e escolhe a música só quando a história combina. A escolha aparece na aba Roteiro e no campo `"music"` do roteiro, que você pode editar. As outras músicas da pasta continuam sendo sorteadas nos demais vídeos; se não houver nenhuma, o vídeo fica sem música.
@@ -136,17 +136,17 @@ A IA do roteiro recebe essas descrições e escolhe a música só quando a hist�
 **Efeitos e ambientes**: crie uma pasta em `data/sound-packs/` (também fora do git, para sons que você não pode redistribuir, como os do Pixabay) e nomeie os arquivos pelo tipo de som:
 
 ```
-data/sound-packs/meus-sons-de-terror/
-  pack.json        {"styles": ["terror"], "tags": {"ambience": ["paranormal", "sinistro"]}}
-  impact.mp3       usado nos sustos e revelações, no lugar do impacto padrão
-  scream-1.mp3     variações do mesmo som: uma é sorteada a cada uso
-  scream-2.mp3
+data/sound-packs/meus-sons/
+  pack.json        {"styles": ["neutro"], "tags": {"ambience": ["cafe", "escritorio"]}}
+  impact.mp3       usado nas revelações, no lugar do impacto padrão
+  applause-1.mp3   variações do mesmo som: uma é sorteada a cada uso
+  applause-2.mp3
   ambience-1.mp3   ambiente padrão quando o ElevenLabs não está disponível
   ambience-rain.mp3
 ```
 
 - `whoosh`, `impact`, `riser` e `blip` substituem os sons padrão das transições e batidas.
-- Qualquer outro nome (`scream`, `door`, `thunder`…) vira um efeito que o roteiro pode pedir. Ele é usado quando a descrição do efeito tem a palavra, em inglês ou português (ex.: "woman screaming" ou "grito" usam um `scream`). A IA do roteiro recebe a lista dos sons disponíveis.
+- Qualquer outro nome (`applause`, `door`, `laugh`…) vira um efeito que o roteiro pode pedir. Ele é usado quando a descrição do efeito tem a palavra, em inglês ou português (ex.: "crowd clapping" ou "palmas" usam um `applause`). A IA do roteiro recebe a lista dos sons disponíveis.
 - `ambience` e `ambience-<palavra>` são ambientes, escolhidos pela descrição da cena.
 - O `pack.json` é opcional. `styles` limita o pacote a estilos de som do canal, e `tags` acrescenta palavras-chave.
 - Na timeline, **Adicionar SFX** mostra os seus sons em **Sua biblioteca**.

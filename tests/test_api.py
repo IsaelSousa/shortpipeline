@@ -8,7 +8,7 @@ from shortpipeline.server import app
 
 
 @pytest.fixture
-def client(fresh_config):
+def client(channel):
     return TestClient(app)
 
 
@@ -27,9 +27,9 @@ def test_meta_lists_stages(client):
 
 def test_config_roundtrip(client):
     cfg = client.get("/api/config").json()
-    cfg["channels"]["tech"]["name"] = "Tecnologia de teste"
+    cfg["channels"][next(iter(cfg["channels"]))]["name"] = "Nome de teste"
     assert client.put("/api/config", json=cfg).status_code == 200
-    assert client.get("/api/config").json()["channels"]["tech"]["name"] == "Tecnologia de teste"
+    assert "Nome de teste" in {c["name"] for c in client.get("/api/config").json()["channels"].values()}
     assert client.put("/api/config", json={"general": {}}).status_code == 400
 
 
@@ -37,17 +37,17 @@ def test_channel_create_and_delete(client, tmp_path, monkeypatch):
     from shortpipeline import config
 
     monkeypatch.setattr(config, "MUSIC_DIR", tmp_path / "music")  # não cria pasta dentro do repo
-    res = client.post("/api/channels", json={"name": "Receitas Rápidas"})
+    res = client.post("/api/channels", json={"name": "Dicas de Jardinagem"})
     assert res.status_code == 200
     cid = res.json()["id"]
-    assert client.get("/api/config").json()["channels"][cid]["name"] == "Receitas Rápidas"
-    assert client.post("/api/channels", json={"name": "Receitas Rápidas"}).status_code == 409
+    assert client.get("/api/config").json()["channels"][cid]["name"] == "Dicas de Jardinagem"
+    assert client.post("/api/channels", json={"name": "Dicas de Jardinagem"}).status_code == 409
     assert client.delete(f"/api/channels/{cid}").status_code == 200
     assert cid not in client.get("/api/config").json()["channels"]
 
 
-def test_job_lifecycle(client):
-    res = client.post("/api/jobs", json={"channel": "terror", "topic": "um teste", "count": 1})
+def test_job_lifecycle(client, channel):
+    res = client.post("/api/jobs", json={"channel": channel, "topic": "um teste", "count": 1})
     assert res.status_code == 200, res.text
     (job_id,) = res.json()["created"]
     job = {"id": job_id}
@@ -60,7 +60,7 @@ def test_job_lifecycle(client):
     assert db.get_job(job["id"]) is None
 
 
-def test_job_file_rejects_path_traversal(client):
-    job = db.create_job("terror", topic="arquivos")
+def test_job_file_rejects_path_traversal(client, channel):
+    job = db.create_job(channel, topic="arquivos")
     res = client.get(f"/api/jobs/{job['id']}/file/..%2F..%2Fconfig.json")
     assert res.status_code in (400, 403, 404)

@@ -29,3 +29,14 @@ def fresh_config():
 
 def pytest_sessionfinish(session, exitstatus):
     shutil.rmtree(DATA, ignore_errors=True)
+
+
+@pytest.fixture
+def channel(fresh_config):
+    """Um canal de exemplo criado na hora (receitas), para os testes não dependerem de nenhum nicho."""
+    cfg = fresh_config.load()
+    ch = fresh_config.new_channel_config("Receitas Rápidas")
+    ch["niche"] = "receitas rápidas para o dia a dia"
+    cfg["channels"]["receitas"] = ch
+    fresh_config.save(cfg)
+    return "receitas"

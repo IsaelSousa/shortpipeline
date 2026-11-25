@@ -12,13 +12,13 @@ from shortpipeline.pipeline import core, run_job
 from shortpipeline.providers import tts
 
 SCRIPT = {
-    "title": "A casa do fim da rua #shorts",
-    "description": "Uma história curta de teste.",
+    "title": "Pão de frigideira em 10 minutos #shorts",
+    "description": "Um roteiro curto de teste.",
     "tags": ["teste"],
     "scenes": [
-        {"narration": "Toda noite a luz da casa do fim da rua acendia sozinha.", "image_prompt": "old house at night"},
-        {"narration": "Um dia eu fui até lá e a porta estava aberta.", "image_prompt": "open door, dark hallway"},
-        {"narration": "Lá dentro, alguém tinha escrito o meu nome na parede.", "image_prompt": "name written on wall"},
+        {"narration": "Você não precisa de forno para fazer pão em casa.", "image_prompt": "flatbread in a frying pan"},
+        {"narration": "Misture farinha, iogurte e uma pitada de sal.", "image_prompt": "hands mixing dough in a bowl"},
+        {"narration": "Dois minutos de cada lado e ele estufa sozinho.", "image_prompt": "flatbread puffing up in a pan"},
     ],
 }
 CRITIC = {"score": 9, "scores": {"hook": 9, "entrega": 9, "ritmo": 8, "final": 9, "titulo": 9}, "issues": []}
@@ -45,16 +45,16 @@ def fake_ai(monkeypatch):
 
 
 @needs_ffmpeg
-def test_short_end_to_end(fresh_config, fake_ai):
+def test_short_end_to_end(channel, fake_ai):
     cfg = config.load()
-    ch = cfg["channels"]["terror"]
+    ch = cfg["channels"][channel]
     ch["models"]["imagens"] = {"provider": "placeholder", "model": "", "fallback_provider": "", "fallback_model": ""}
     ch["review"].update(require_approval=False, approve_before_render=False)
     ch["video"].update(scenes=3, target_seconds=10)
     ch["creative"]["review_script"] = True
     config.save(cfg)
 
-    job = db.create_job("terror", topic="uma casa abandonada que acende a luz sozinha")
+    job = db.create_job(channel, topic="pão sem forno")
     asyncio.run(asyncio.wait_for(run_job(job["id"]), timeout=600))
 
     job = db.get_job(job["id"])
@@ -84,7 +84,7 @@ def test_short_end_to_end(fresh_config, fake_ai):
     assert len(tl["scenes"]) == len(SCRIPT["scenes"])
 
 
-def test_failed_stage_marks_job_and_notifies(fresh_config, monkeypatch):
+def test_failed_stage_marks_job_and_notifies(channel, monkeypatch):
     from shortpipeline import notify
     from shortpipeline.providers import ProviderError
 
@@ -98,7 +98,7 @@ def test_failed_stage_marks_job_and_notifies(fresh_config, monkeypatch):
 
     monkeypatch.setattr(core.Ctx, "text", broken)
     monkeypatch.setattr(notify, "notify_event", fake_notify)
-    job = db.create_job("terror", topic="vai falhar")
+    job = db.create_job(channel, topic="vai falhar")
     asyncio.run(run_job(job["id"]))
 
     job = db.get_job(job["id"])
@@ -108,23 +108,23 @@ def test_failed_stage_marks_job_and_notifies(fresh_config, monkeypatch):
     assert sent == [("error", job["id"], job["error"])]
 
 
-def test_script_can_pick_special_music(fresh_config, monkeypatch, tmp_path):
+def test_script_can_pick_special_music(channel, monkeypatch, tmp_path):
     from shortpipeline.pipeline import writing
 
-    folder = tmp_path / "music" / "terror"
+    folder = tmp_path / "music" / channel
     folder.mkdir(parents=True)
-    (folder / "natal.mp3").write_bytes(b"x")
-    (folder / "music.json").write_text(json.dumps({"natal.mp3": "histórias de Natal"}))
+    (folder / "festa.mp3").write_bytes(b"x")
+    (folder / "music.json").write_text(json.dumps({"festa.mp3": "receitas de festa de aniversário"}))
     monkeypatch.setattr(config, "MUSIC_DIR", tmp_path / "music")
     prompts = []
 
     async def text(self, stage_key, prompt):
         prompts.append(prompt)
-        return json.dumps({**SCRIPT, "music": "natal.mp3"} if stage_key == "roteiro" else CRITIC)
+        return json.dumps({**SCRIPT, "music": "festa.mp3"} if stage_key == "roteiro" else CRITIC)
 
     monkeypatch.setattr(core.Ctx, "text", text)
-    job = db.create_job("terror", topic="o Papai Noel que não ia embora")
+    job = db.create_job(channel, topic="bolo de aniversário de caneca")
     c = core.Ctx(job, config.load())
     asyncio.run(writing.stage_roteiro(c))
-    assert '"natal.mp3": histórias de Natal' in prompts[0]
-    assert c.data["script"]["music"] == "natal.mp3"
+    assert '"festa.mp3": receitas de festa de aniversário' in prompts[0]
+    assert c.data["script"]["music"] == "festa.mp3"

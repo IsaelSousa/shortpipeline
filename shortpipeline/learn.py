@@ -95,6 +95,10 @@ def _collect_sync(cid: str, days: int) -> list[dict]:
         j = jobs.get(r["video"])
         if j:
             sc = (j["data"].get("script") or {}).get("scenes") or [{}]
+            ed = j["data"].get("editorial_idea") or {}
+            v["pauta"] = str(j.get("topic") or ed.get("topic") or "")[:300]
+            if ed.get("family"):
+                v["familia"] = ed["family"]
             v["formato"] = j["data"].get("format") or ""
             v["gancho"] = (sc[0].get("narration") or "")[:200]
             v["nota_revisor"] = (j["data"].get("critique") or {}).get("final")
@@ -115,6 +119,57 @@ def _collect_sync(cid: str, days: int) -> list[dict]:
                 log.warning("Curva de retenção indisponível para %s: %s", r["video"], exc)
         out.append(v)
     return out
+
+
+def _themes(raw) -> list[dict]:
+    out = []
+    for t in raw if isinstance(raw, list) else []:
+        if not isinstance(t, dict) or not str(t.get("theme") or "").strip():
+            continue
+        try:
+            score = max(0.0, min(1.0, float(t.get("score", 0.5))))
+        except (TypeError, ValueError):
+            score = 0.5
+        out.append({"theme": str(t["theme"]).strip()[:160], "score": score,
+                    "evidence": str(t.get("evidence") or "").strip()[:240]})
+    return sorted(out, key=lambda t: -t["score"])[:8]
+
+
+def _performance(videos: list[dict]) -> list[dict]:
+    """Os números de cada vídeo, curtos, para a etapa de pauta comparar."""
+    keep = ("titulo", "pauta", "familia", "views", "pct_assistido", "inscritos")
+    return [{k: v[k] for k in keep if v.get(k) not in (None, "")} for v in videos[:40]]
+
+
+def topic_brief(cid: str, ch: dict) -> str:
+    """O que o Analytics diz sobre temas, para guiar a escolha da pauta. Vazio se desligado ou sem análise."""
+    cr = ch.get("creative") or {}
+    if not cr.get("auto_learn", True) or not cr.get("learn_topics", True):
+        return ""
+    data = load(cid)
+    themes, perf = data.get("themes") or [], data.get("performance") or []
+    if not themes and not perf:
+        return ""
+    lines = []
+    if themes:
+        lines.append("Temas pelo desempenho real (nota 0–1, do que mais rende para o que menos rende):")
+        lines += [f"- {t['theme']} ({t['score']:.2f})" + (f": {t['evidence']}" if t.get("evidence") else "")
+                  for t in themes]
+    if perf:
+        ranked = sorted(perf, key=lambda v: -(v.get("views") or 0))
+        top, bottom = ranked[:8], ranked[8:][-5:]
+        fmt = lambda v: (f"- {v.get('titulo')}" + (f" [{v['familia']}]" if v.get("familia") else "")
+                         + f": {v.get('views', 0)} views, {v.get('pct_assistido', 0)}% assistido"
+                         + (f", +{v['inscritos']} inscritos" if v.get("inscritos") else ""))
+        lines.append("Vídeos que mais renderam:")
+        lines += [fmt(v) for v in top]
+        if bottom:
+            lines.append("Vídeos que menos renderam:")
+            lines += [fmt(v) for v in bottom]
+    if data.get("next_topics"):
+        lines.append("Pautas sugeridas pela análise (use, adapte ou combine, se ainda não foram feitas):")
+        lines += [f"- {t}" for t in data["next_topics"]]
+    return "\n".join(lines)
 
 
 async def _ask(cfg: dict, ch: dict, prompt: str) -> str:
@@ -164,6 +219,9 @@ async def run(cid: str, days: int = 60) -> dict:
                 except (TypeError, ValueError):
                     scores[f] = 0.5
             data = {"insights": insights, "format_scores": scores, "summary": out.get("summary") or "",
+                    "themes": _themes(out.get("themes")),
+                    "next_topics": [str(t).strip()[:400] for t in out.get("next_topics") or [] if str(t).strip()][:8],
+                    "performance": _performance(videos),
                     "learned_at": time.time(), "videos": len(videos), "days": days}
         except Exception as e:
             data = {**prev, "failed_at": time.time(), "error": str(e)[:300]}

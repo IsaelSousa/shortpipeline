@@ -606,9 +606,18 @@ async function learnBox(cid, el) {
     </div>
     ${r.error ? `<p class="small" style="color:var(--warn);margin-top:8px">Última tentativa falhou: ${esc(r.error)}</p>` : ""}
     ${r.summary ? `<p style="margin-top:10px;font-weight:550">${esc(r.summary)}</p>` : ""}
+    ${(r.themes || []).length ? `<div class="sub-head" style="margin-top:12px">Temas pelo desempenho</div>
+      <div class="hbars">${r.themes.map((t) => `<div class="hbar" title="${esc(t.evidence || "")}"><span class="ellipsis">${esc(t.theme)}</span><div class="track"><div class="fill" style="width:${(t.score * 100).toFixed(0)}%"></div></div><span class="v">${(t.score * 100).toFixed(0)}</span></div>`).join("")}</div>
+      <p class="small faint" style="margin-top:6px">A etapa de pauta puxa os vídeos para os temas de nota alta e evita os de nota baixa. Passe o mouse para ver os números.</p>` : ""}
+    ${(r.next_topics || []).length ? `<div class="sub-head" style="margin-top:12px">Pautas sugeridas pela análise</div>
+      <div class="stack" style="gap:6px">${r.next_topics.map((t, i) => `<div class="row" style="gap:8px;align-items:center"><span class="grow small">${esc(t)}</span><button class="btn sm" data-learn-topic="${i}">${icon("plus", "sm")}Criar</button></div>`).join("")}</div>` : ""}
     ${r.insights ? `<pre class="learn-text">${esc(r.insights)}</pre>` : ""}
     ${scores.length ? `<div class="hbars" style="margin-top:10px">${scores.map(([f, v]) => `<div class="hbar" title="${esc(f)}: ${(v * 100).toFixed(0)}"><span class="ellipsis">${esc(f)}</span><div class="track"><div class="fill" style="width:${(v * 100).toFixed(0)}%"></div></div><span class="v">${(v * 100).toFixed(0)}</span></div>`).join("")}</div>
       <p class="small faint" style="margin-top:6px">Nota de cada formato (0–100): quanto mais alta, mais vezes ele volta.</p>` : ""}`;
+  el.querySelectorAll("[data-learn-topic]").forEach((b) => b.onclick = () => act(async () => {
+    b.disabled = true;
+    await api("/api/jobs", { method: "POST", body: { channel: cid, topic: r.next_topics[+b.dataset.learnTopic], count: 1 } });
+  }, "Short na fila"));
   $("[data-learn]", el).onclick = () => {
     el.querySelector("[data-learn]").disabled = true;
     el.querySelector(".grow").textContent = "Analisando o Analytics… (leva 1 a 2 minutos)";

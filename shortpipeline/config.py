@@ -188,6 +188,51 @@ Responda SOMENTE com JSON válido, sem markdown:
   "cover_prompt": "english prompt for a striking horizontal thumbnail image",
   "scenes": [{{"chapter": "nome do capítulo (só quando começa um)", "narration": "texto", "image_prompt": "english"}}]}}"""
 
+GENERIC_SCRIPT_PROMPT = """Você escreve roteiros para o canal de YouTube Shorts "{channel}".
+Nicho: {niche}
+
+Escreva um short em {language} sobre: {topic}
+
+Regras:
+- {scenes} cenas, narração total de uns {seconds} segundos (cerca de {words} palavras no total).
+- A primeira frase é o gancho: algo concreto que prende nos 2 primeiros segundos.
+- Siga o tom e o estilo que combinam com o nicho do canal. Frases curtas, linguagem falada.
+- Cada cena acrescenta algo novo; entregue a informação, a história ou a dica principal antes do fim.
+- Termine logo depois da entrega principal, sem resumo e sem pedir comentário.
+- Se o assunto for factual, não invente números, datas, nomes ou citações: se não tiver certeza, não cite.
+- Para cada cena, escreva um image_prompt EM INGLÊS descrevendo uma imagem vertical que mostre
+  aquela cena (assunto, ambiente, luz, enquadramento). Mantenha pessoas e objetos consistentes
+  entre as cenas. Sem logotipos de marcas e sem texto na imagem.
+
+Responda SOMENTE com JSON válido, sem markdown, neste formato:
+{{"title": "título curto e curioso (máx 70 caracteres, com #shorts no fim)",
+  "description": "descrição de 2-3 linhas com hashtags",
+  "tags": ["tag1", "tag2"],
+  "cover_text": "texto da capa: 2 a 5 palavras de impacto, com a palavra mais forte entre [colchetes]",
+  "cover_prompt": "english prompt for a striking cover image of the short",
+  "scenes": [{{"narration": "texto narrado", "image_prompt": "english prompt"}}]}}"""
+
+LONG_PROMPT_GENERIC = """Você escreve roteiros de VÍDEOS LONGOS para o canal de YouTube "{channel}".
+Nicho: {niche}
+
+Escreva um vídeo em {language} sobre: {topic}
+
+Regras:
+- Cerca de {minutes} minutos de narração (umas {words} palavras no total), dividida em {scenes} cenas.
+- Abertura com gancho e promessa clara do que a pessoa vai ganhar assistindo até o fim.
+- Organize em 3 a 6 capítulos ("chapter" na cena que começa cada um; a primeira cena sempre tem chapter).
+- Siga o tom que combina com o nicho do canal; use exemplos concretos e faça cada capítulo avançar.
+- Se o assunto for factual, não invente números, datas, nomes ou citações.
+- Para cada cena, um image_prompt EM INGLÊS para uma imagem horizontal que mostre a cena. Sem logotipos e sem texto.
+
+Responda SOMENTE com JSON válido, sem markdown:
+{{"title": "título forte para vídeo longo (máx 90 caracteres, sem #shorts)",
+  "description": "descrição de 3-5 linhas com hashtags",
+  "tags": ["tag1", "tag2"],
+  "cover_text": "2 a 4 palavras para a thumbnail, com a palavra mais forte entre [colchetes]",
+  "cover_prompt": "english prompt for a striking horizontal thumbnail image",
+  "scenes": [{{"chapter": "nome do capítulo (só quando começa um)", "narration": "texto", "image_prompt": "english"}}]}}"""
+
 CRITIC_PROMPT = """Você é o editor-chefe do canal de YouTube "{channel}" (nicho: {niche}). Avalie o roteiro abaixo
 como um especialista em retenção de {kind}. A maior perda de público acontece nos primeiros 3 a 10 segundos e no final.
 
@@ -216,7 +261,8 @@ Em temas factuais, mantenha a distinção entre evidência e hipótese e preserv
 
 LEARN_PROMPT = """Você é analista de crescimento do canal de YouTube "{channel}" (nicho: {niche}).
 Abaixo estão os dados reais dos vídeos do canal nos últimos {days} dias: título, duração, views, % média assistida,
-duração média assistida, e (quando o vídeo foi feito pelo pipeline) o formato usado e a primeira frase (gancho).
+duração média assistida, e (quando o vídeo foi feito pelo pipeline) a pauta, a família temática, o formato usado
+e a primeira frase (gancho).
 "retencao" mostra a % do público que ainda assistia em 10%, 25%, 50%, 75% e 95% do vídeo (acima de 100% = reassistiram).
 
 {videos}
@@ -224,11 +270,18 @@ duração média assistida, e (quando o vídeo foi feito pelo pipeline) o format
 Formatos disponíveis no canal: {formats}
 {rules}
 
-Escreva o que o canal deve REPETIR e EVITAR, com base só nesses números. Responda SOMENTE com JSON:
-{{"insights": "5 a 8 linhas curtas começando com '- ', concretas e acionáveis (temas, padrão de título, duração ideal,
+A prioridade é descobrir QUAIS TEMAS E ASSUNTOS o público quer ver: agrupe os vídeos por tema (o assunto de fundo,
+não o título exato) e compare views, % assistida e inscritos de cada grupo. Depois escreva o que o canal deve
+REPETIR e EVITAR, com base só nesses números. Responda SOMENTE com JSON:
+{{"themes": [{{"theme": "tema ou assunto de fundo, curto", "score": nota de 0 a 1 (1 = o que mais rende),
+   "evidence": "os números que sustentam, curto"}}],
+ "next_topics": ["6 pautas NOVAS em 1 frase cada, dentro dos temas que rendem, sem repetir histórias ou
+   assuntos já publicados"],
+ "insights": "5 a 8 linhas curtas começando com '- ', concretas e acionáveis (padrão de título, duração ideal,
 como abrir o vídeo, como terminar). Cite números quando ajudar.",
  "format_scores": {{"nome exato do formato": nota de 0 a 1 de quanto vale repetir (0.5 se não há dados)}},
  "summary": "1 frase com a principal conclusão"}}
+Liste de 3 a 8 temas, do que mais rende para o que menos rende. Tema com 1 vídeo só conta como indício.
 """
 
 
@@ -343,7 +396,7 @@ DEFAULT_CONFIG: dict = {
                 "insights": "",
                 "review_script": True, "review_min_score": 8, "review_rounds": 1,
                 "characters": True, "character_refs": True,
-                "auto_learn": True, "learn_every_days": 7,
+                "auto_learn": True, "learn_every_days": 7, "learn_topics": True,
                 # marca do canal
                 "persona": "", "signoff": "",
                 "series_name": "", "series_badge": "", "series_start": 1,
@@ -428,7 +481,7 @@ DEFAULT_CONFIG: dict = {
                 "insights": "",
                 "review_script": True, "review_min_score": 8, "review_rounds": 1,
                 "characters": True, "character_refs": True,
-                "auto_learn": True, "learn_every_days": 7,
+                "auto_learn": True, "learn_every_days": 7, "learn_topics": True,
                 # marca do canal
                 "persona": "", "signoff": "",
                 "series_name": "", "series_badge": "", "series_start": 1,
@@ -481,10 +534,41 @@ def _migrate_channel(ch: dict) -> None:
             cr.setdefault(new, cr.pop(old))
 
 
+def _generic_channel() -> dict:
+    """Modelo neutro para canais novos, de qualquer nicho: parte dos padrões e tira o que é de terror ou tecnologia."""
+    ch = copy.deepcopy(DEFAULT_CONFIG["channels"]["tech"])
+    ch.update(name="Novo canal", niche="")
+    ch["idea"] = {"source": "llm", "rss_urls": [], "explore": [], "avoid": [], "tone": "", "require_approval": False}
+    n = ch["models"]["narracao"]
+    n.update(stability=0.45, style=0.3, speed=1.0, rate="+0%", pitch="+0Hz")
+    ch["prompts"].update(
+        script=GENERIC_SCRIPT_PROMPT, long_script=LONG_PROMPT_GENERIC,
+        image_style="clean cinematic illustration, natural lighting, rich but realistic colors, "
+                    "sharp focus on the subject, vertical 9:16 composition, no text, no logos")
+    ch["video"].update(target_seconds=40, highlight_color="#FACC15", effects="none", music_volume=0.08)
+    ch["cover"]["highlight_color"] = "#FACC15"
+    ch["creative"].update(sound_style="neutro", ambience_volume=0.1, formats=[
+        "dica prática: o problema, a solução e o resultado",
+        "você sabia? (um fato surpreendente e por que ele importa)",
+        "mito ou verdade",
+        "3 coisas que quase ninguém sabe sobre o tema",
+        "antes e depois: o que muda quando se faz do jeito certo",
+        "história curta com uma virada no final",
+    ])
+    ch["upload"]["category_id"] = "22"
+    ch["schedule"] = {"enabled": False, "times": ["12:00"]}
+    return ch
+
+
+GENERIC_CHANNEL = _generic_channel()
+
+
 def _channel_template(ch: dict | None = None) -> dict:
-    """Padrões de um canal sem modelo próprio: usa o de tecnologia se o canal for no estilo tech, senão o de terror."""
+    """Padrões de um canal sem modelo próprio, pelo estilo de som: terror e tech usam os exemplos, o resto o neutro."""
     style = ((ch or {}).get("creative") or {}).get("sound_style")
-    return DEFAULT_CONFIG["channels"]["tech" if style == "tech" else "terror"]
+    if style in ("terror", "tech"):
+        return DEFAULT_CONFIG["channels"][style]
+    return GENERIC_CHANNEL
 
 
 def channel_defaults(cid: str, ch: dict | None = None) -> dict:
@@ -532,7 +616,7 @@ def channel(cfg: dict, channel_id: str) -> dict:
 
 
 def new_channel_config(name: str) -> dict:
-    ch = copy.deepcopy(_channel_template())
+    ch = copy.deepcopy(GENERIC_CHANNEL)
     ch["name"] = name
     ch["niche"] = ""
     return ch

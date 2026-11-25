@@ -45,6 +45,16 @@ async def stage_ideia(c: Ctx) -> None:
     banned = [_editorial_key(term) for term in (idea.get("avoid") or [])]
     rejected: list[dict] = []
     finalists: list[dict] = []
+    data_brief = learn.topic_brief(c.channel_id, c.ch)
+    if data_brief:
+        c.log("Pauta guiada pelo Analytics do canal")
+    analytics_block = f"""
+O QUE OS NÚMEROS DO CANAL MOSTRAM (critério principal para escolher o tema, abaixo só das regras editoriais):
+{data_brief}
+""" if data_brief else ""
+    pick_by_data = ("\nEscolha principalmente pelos números: prefira a candidata cujo tema rendeu mais no canal. "
+                    "Descarte candidatas de temas que renderam pouco, a não ser que as regras editoriais peçam "
+                    "esse tema." if data_brief else "")
 
     async def review(options: list[dict]) -> dict | None:
         eligible = []
@@ -69,10 +79,10 @@ Regras editoriais do canal (prioridade acima dos dados):
 
 Histórico recente (inclui trabalhos ainda na fila):
 {history_json}
-
+{analytics_block}
 Candidatas:
 {json.dumps(entries, ensure_ascii=False)}
-
+{pick_by_data}
 Elimine premissas já usadas, mesmo quando o texto, objeto ou personagem mudam.
 Em ficção compare o mecanismo do conflito, a decisão do personagem e a revelação.
 Em assuntos factuais compare assunto, organização e descoberta. Exija uma afirmação que possa
@@ -102,8 +112,12 @@ Responda só JSON: {{"selected_id": número da candidata aprovada ou null se nen
 
     if not selected:
         prompt = c.fmt(c.ch["prompts"]["idea"], history=history)
+        if data_brief:
+            prompt += ("\n" + analytics_block + "Puxe as pautas para os temas que mais renderam, com histórias ou "
+                       "assuntos novos (o tema volta, a premissa não). Evite os temas que menos renderam. "
+                       "Pelo menos 4 das 6 candidatas devem estar nos temas de nota mais alta.")
         if c.insights():
-            prompt += "\n\nAprendizados de formato e retenção (não reutilize assuntos só por terem funcionado):\n" + c.insights()
+            prompt += "\n\nAprendizados de formato e retenção:\n" + c.insights()
         if c.is_long:
             prompt += f"\nA pauta precisa sustentar cerca de {c.long_opts().get('target_minutes') or 8} minutos."
         for attempt in range(2):
