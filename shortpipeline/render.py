@@ -287,11 +287,34 @@ EFFECTS = {
 }
 
 
-def pick_music(channel_id: str) -> Path | None:
+MUSIC_EXTS = (".mp3", ".wav", ".m4a", ".ogg")
+
+
+def music_tracks(channel_id: str) -> tuple[list[Path], dict[str, str]]:
+    """Músicas do canal: (comuns, especiais). Especiais são as descritas no music.json da pasta,
+    {"arquivo.mp3": "quando usar"}, e só tocam quando o roteiro pede por elas."""
     folder = config.MUSIC_DIR / channel_id
-    tracks = [p for p in folder.glob("*") if p.suffix.lower() in (".mp3", ".wav", ".m4a", ".ogg")] \
-        if folder.is_dir() else []
-    return random.choice(tracks) if tracks else None
+    if not folder.is_dir():
+        return [], {}
+    tracks = sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in MUSIC_EXTS)
+    special: dict[str, str] = {}
+    meta = folder / "music.json"
+    if meta.is_file():
+        try:
+            data = json.loads(meta.read_text())
+        except ValueError:
+            data = {}
+        names = {p.name for p in tracks}
+        special = {k: str(v) for k, v in (data if isinstance(data, dict) else {}).items() if k in names and v}
+    return [p for p in tracks if p.name not in special], special
+
+
+def pick_music(channel_id: str, wanted: str | None = None) -> Path | None:
+    """A música especial pedida pelo roteiro, se existir; senão uma comum sorteada (ou nenhuma)."""
+    common, special = music_tracks(channel_id)
+    if wanted and wanted in special:
+        return config.MUSIC_DIR / channel_id / wanted
+    return random.choice(common) if common else None
 
 
 MOTION_PROJECT = config.ROOT / "motion-canvas"
@@ -345,7 +368,7 @@ async def render_video(job_dir: Path, images: list[Path], durations: list[float]
                        frame: tuple[int, int] = (W, H), shots: list[list[float]] | None = None,
                        beats: list[float] | None = None, sfx: Path | None = None, flash: bool = False,
                        meter: dict | None = None, motions: list[dict | None] | None = None,
-                       scene_videos: list[Path | None] | None = None) -> None:
+                       scene_videos: list[Path | None] | None = None, music: Path | None | str = "auto") -> None:
     """`shots`: durações dos planos de cada cena; `beats`: instantes (s) de susto/revelação, que ganham
     tremor, flash (se `flash`) e um respiro na música; `sfx`: trilha de efeitos já mixada;
     `meter`: selo de nota no fim do vídeo ({"score", "label", "start", "end", "color"})."""
@@ -387,7 +410,8 @@ async def render_video(job_dir: Path, images: list[Path], durations: list[float]
     na = n
     inputs += ["-i", str(narration)]
     nxt = n + 1
-    music = pick_music(channel_id)
+    if music == "auto":
+        music = pick_music(channel_id)
     mi = si = cover_idx = None
     if music:
         mi = nxt; nxt += 1

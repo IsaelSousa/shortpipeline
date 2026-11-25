@@ -69,3 +69,24 @@ def test_build_cover_outputs_frame_sized_images(tmp_path):
     v = next(s for s in probe(png)["streams"] if s["codec_type"] == "video")
     assert (v["width"], v["height"]) == (render.W, render.H)
     assert jpg.stat().st_size > 0
+
+
+def test_special_music_only_when_the_script_asks(tmp_path, monkeypatch):
+    from shortpipeline import config
+
+    folder = tmp_path / "music" / "canal"
+    folder.mkdir(parents=True)
+    for name in ("normal.mp3", "natal.mp3"):
+        (folder / name).write_bytes(b"x")
+    (folder / "music.json").write_text(json.dumps({"natal.mp3": "histórias de Natal", "sumiu.mp3": "não existe"}))
+    monkeypatch.setattr(config, "MUSIC_DIR", tmp_path / "music")
+
+    common, special = render.music_tracks("canal")
+    assert [p.name for p in common] == ["normal.mp3"]
+    assert special == {"natal.mp3": "histórias de Natal"}
+    assert render.pick_music("canal", "natal.mp3").name == "natal.mp3"
+    assert {render.pick_music("canal").name for _ in range(20)} == {"normal.mp3"}
+    assert render.pick_music("canal", "outra.mp3").name == "normal.mp3"
+
+    (folder / "normal.mp3").unlink()
+    assert render.pick_music("canal") is None  # só a especial: sem música quando o roteiro não pede

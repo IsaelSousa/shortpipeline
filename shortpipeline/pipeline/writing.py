@@ -8,7 +8,7 @@ import re
 import time
 import unicodedata
 
-from .. import config, db, learn, sound
+from .. import config, db, learn, render, sound
 from ..providers import ProviderError, llm
 from .core import Ctx, WaitingApproval
 
@@ -275,6 +275,12 @@ def creative_hint(c: Ctx, fmt: str) -> str:
         lines.append(f"- Formato sugerido: {fmt}. Adapte a estrutura ao formato."
                      + (f" Se ele não combinar com a pauta, troque pelo que combinar melhor desta lista: {others}. "
                         'Diga no JSON o formato usado em "format" (texto exato da lista).' if others else ""))
+    _, special = render.music_tracks(c.channel_id)
+    if special:
+        options = "\n".join(f'  - "{name}": {when}' for name, when in special.items())
+        lines.append("- Músicas especiais do canal, para usar só quando a história combinar com a descrição:\n"
+                     f"{options}\n  Se uma combinar, diga o nome do arquivo em \"music\"; se nenhuma combinar, "
+                     "deixe \"music\": \"\" (entra a música normal do canal).")
     if cr.get("sound", True):
         lines.append(
             '- Em cada cena, além de narration e image_prompt, inclua: "sfx": até 2 efeitos sonoros '
@@ -344,6 +350,11 @@ async def stage_roteiro(c: Ctx) -> None:
     if chosen and chosen != fmt and chosen in (c.creative().get("formats") or []):
         c.save(format=chosen)
         c.log(f"Formato trocado pela IA para combinar com a pauta: {chosen}")
+    _, special = render.music_tracks(c.channel_id)
+    if script.get("music") in special:
+        c.log(f"Música especial escolhida pelo roteiro: {script['music']}")
+    else:
+        script.pop("music", None)
     if c.creative().get("review_script", True):
         script = await critique(c, script)
     if script.get("rating") is not None:

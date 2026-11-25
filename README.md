@@ -125,6 +125,14 @@ No painel:
 
 **Música de fundo**: coloque MP3s em `assets/music/<id-do-canal>/`. Um é sorteado por vídeo. A pasta fica fora do git.
 
+Uma música que só faz sentido em certas histórias (ex.: um jingle de Natal) vai num `music.json` na mesma pasta, com a descrição de quando usar:
+
+```json
+{"jingle-de-natal.mp3": "histórias que se passam no Natal: Papai Noel, ceia, presentes"}
+```
+
+A IA do roteiro recebe essas descrições e escolhe a música só quando a história combina. A escolha aparece na aba Roteiro e no campo `"music"` do roteiro, que você pode editar. As outras músicas da pasta continuam sendo sorteadas nos demais vídeos; se não houver nenhuma, o vídeo fica sem música.
+
 **Efeitos e ambientes**: crie uma pasta em `data/sound-packs/` (também fora do git, para sons que você não pode redistribuir, como os do Pixabay) e nomeie os arquivos pelo tipo de som:
 
 ```

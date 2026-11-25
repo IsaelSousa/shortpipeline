@@ -106,3 +106,25 @@ def test_failed_stage_marks_job_and_notifies(fresh_config, monkeypatch):
     assert job["stages"]["roteiro"]["status"] == "failed"
     assert "cota esgotada" in job["error"]
     assert sent == [("error", job["id"], job["error"])]
+
+
+def test_script_can_pick_special_music(fresh_config, monkeypatch, tmp_path):
+    from shortpipeline.pipeline import writing
+
+    folder = tmp_path / "music" / "terror"
+    folder.mkdir(parents=True)
+    (folder / "natal.mp3").write_bytes(b"x")
+    (folder / "music.json").write_text(json.dumps({"natal.mp3": "histórias de Natal"}))
+    monkeypatch.setattr(config, "MUSIC_DIR", tmp_path / "music")
+    prompts = []
+
+    async def text(self, stage_key, prompt):
+        prompts.append(prompt)
+        return json.dumps({**SCRIPT, "music": "natal.mp3"} if stage_key == "roteiro" else CRITIC)
+
+    monkeypatch.setattr(core.Ctx, "text", text)
+    job = db.create_job("terror", topic="o Papai Noel que não ia embora")
+    c = core.Ctx(job, config.load())
+    asyncio.run(writing.stage_roteiro(c))
+    assert '"natal.mp3": histórias de Natal' in prompts[0]
+    assert c.data["script"]["music"] == "natal.mp3"

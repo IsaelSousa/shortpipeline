@@ -188,12 +188,15 @@ async def stage_render(c: Ctx) -> None:
             videos.append(replacement if media.get("kind") == "video" else None)
             visuals.append(replacement if replacement and media.get("kind") == "image"
                            else scene_image(Path(path), c.dir, scene))
+        music = render.pick_music(c.channel_id, c.data["script"].get("music"))
+        log(f"Música: {music.name}" if music else "Sem música de fundo")
         await render.render_video(c.dir, visuals, c.data["durations"],
                                   c.dir / "narration.wav", ass, c.ch["video"], c.channel_id, out, log=log,
                                   cover=cover_png, cover_seconds=float(cov.get("in_video_seconds") or 0.3),
                                   frame=c.frame, shots=shots, beats=snd.get("beats") or [], sfx=sfx,
                                   flash=style == "terror" and cr.get("beat_fx", True), meter=meter,
-                                  motions=[scene.get("motion") for scene in scenes], scene_videos=videos)
+                                  motions=[scene.get("motion") for scene in scenes], scene_videos=videos,
+                                  music=music)
     size = out.stat().st_size / 1e6
     c.save(video=str(out))
     c.log(f"Vídeo pronto: {size:.1f} MB")

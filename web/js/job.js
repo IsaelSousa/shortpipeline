@@ -380,6 +380,7 @@ async function pageJob(id) {
       <dl class="kv">
         ${d.format ? `<dt>Formato</dt><dd>${esc(d.format)}</dd>` : ""}
         ${d.series_no ? `<dt>Série</dt><dd>#${esc(d.series_no)}</dd>` : ""}
+        ${script.music ? `<dt>Música</dt><dd>${icon("volume", "sm")} ${esc(script.music)} <span class="muted small">(escolhida pelo roteiro)</span></dd>` : ""}
         ${script.rating != null ? `<dt>${esc(CFG.channels[job.channel]?.creative?.rating_label || "Nota")}</dt><dd><span class="score">${esc(script.rating)}/10</span></dd>` : ""}
         ${d.critique?.rounds?.length ? `<dt>Revisor</dt><dd>${critiqueView(d.critique)}</dd>` : ""}
         ${(script.characters || []).length ? `<dt>Personagens</dt><dd class="stack" style="gap:4px">${script.characters.map((c) => `<div><b>${esc(c.name)}</b> <span class="muted small">${esc(c.look || "")}</span></div>`).join("")}</dd>` : ""}

@@ -127,6 +127,14 @@ In the dashboard:
 
 **Background music**: put MP3s in `assets/music/<channel-id>/`. One is picked at random per video. The folder is ignored by git.
 
+A track that only fits some stories (e.g. a Christmas jingle) goes in a `music.json` in the same folder, describing when to use it:
+
+```json
+{"christmas-jingle.mp3": "stories set at Christmas: Santa, presents, Christmas Eve dinner"}
+```
+
+The script AI gets these descriptions and only picks the track when the story fits. The choice shows on the Roteiro (Script) tab and in the script's `"music"` field, which you can edit. The other tracks in the folder are still picked at random for the other videos; if there are none, the video has no music.
+
 **Effects and ambience**: create a folder in `data/sound-packs/` (also ignored by git, for sounds you can't redistribute, such as Pixabay's) and name the files after the kind of sound:
 
 ```

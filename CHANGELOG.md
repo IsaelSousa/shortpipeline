@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Scene media tools**: replace a scene's image or video, preview a Real-ESRGAN upscale and Motion Canvas templates before rendering.
 - **Camera motion presets** per channel (smooth zoom, horizontal pan, vertical pan or automatic).
 - **Offline sound packs** (CC0, Kenney and OpenGameArt) used when ElevenLabs is unavailable.
+- **Story-matched music**: a `music.json` in a channel's music folder describes when special tracks fit; the script AI picks one only when the story matches, otherwise a regular track (or none) is used.
 - **Your own sound library** in `data/sound-packs/` (outside git): per-style packs (`pack.json`), random variations (`scream-1`, `scream-2`), keyword matching against effect and ambience descriptions in English or Portuguese, priority over ElevenLabs, a "Sua biblioteca" row in the timeline's Add SFX drawer, and the script prompt lists the available sounds.
 - Notification when a job fails, as documented in 0.2.0 (the event existed but was never sent).
 - Test suite (pytest): config migration, sound mix, captions, cover, API routes and a full short from script to `final.mp4` with mocked AI and voice; GitHub Actions workflow running lint and tests.
