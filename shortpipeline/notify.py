@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 
 import httpx
@@ -90,7 +91,7 @@ async def notify_event(cfg: dict, event: str, job: dict, extra: dict | None = No
     ch_name = job.get("channel", "")
     data = job.get("data") or {}
     title = (data.get("script") or {}).get("title") or "Short sem título"
-    panel_url = extra.get("panel_url") or f"http://localhost:8765/#jobs/{job_id}"
+    panel_url = extra.get("panel_url") or f"http://localhost:{os.environ.get('SHORTPIPELINE_PORT', '8765')}/#job/{job_id}"
 
     # Capa para anexo no Telegram se houver
     cover_path = None
@@ -116,14 +117,11 @@ async def notify_event(cfg: dict, event: str, job: dict, extra: dict | None = No
     elif event == "published":
         pub = data.get("publish") or {}
         yt_url = pub.get("url") or pub.get("studio_url")
-        tt_res = pub.get("tiktok") or {}
         ig_res = pub.get("instagram") or {}
 
         links_html = []
         if yt_url:
             links_html.append(f"• <a href='{yt_url}'>YouTube Video / Studio</a>")
-        if tt_res.get("status"):
-            links_html.append(f"• TikTok: {tt_res.get('status')}")
         if ig_res.get("permalink"):
             links_html.append(f"• <a href='{ig_res.get('permalink')}'>Instagram Reel</a>")
 

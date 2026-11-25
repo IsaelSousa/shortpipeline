@@ -36,6 +36,12 @@ def reframe_center(src: Path, dst: Path) -> None:
              "-preset", "veryfast", "-crf", "18", "-c:a", "aac", "-b:a", "192k", str(dst)])
 
 
+def reframe_manual(src: Path, dst: Path, x: float, y: float) -> None:
+    crop = f"crop='min(iw,ih*9/16)':'min(ih,iw*16/9)':(iw-ow)*{x:.4f}:(ih-oh)*{y:.4f}"
+    _ffmpeg(["-i", str(src), "-vf", f"{crop},scale={OUT_W}:{OUT_H},setsar=1", "-c:v", "libx264",
+             "-preset", "veryfast", "-crf", "18", "-c:a", "aac", "-b:a", "192k", str(dst)])
+
+
 def _face_track(src: Path, sample_fps: float = 4.0):
     """Devolve (tempos, centros_x normalizados, fração de amostras com rosto, fps, largura, altura)."""
     import cv2

@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from datetime import date, timedelta
 
 from . import config, db, upload
 from .providers import ProviderError, llm
+
+log = logging.getLogger(__name__)
 
 LEARN_DIR = config.DATA_DIR / "learn"
 POINTS = (0.1, 0.25, 0.5, 0.75, 0.95)
@@ -108,8 +111,8 @@ def _collect_sync(cid: str, days: int) -> list[dict]:
                         pts[f"{int(p * 100)}%"] = round(near["audienceWatchRatio"] * 100)
                 if pts:
                     v["retencao"] = pts
-            except Exception:
-                pass
+            except Exception as exc:
+                log.warning("Curva de retenção indisponível para %s: %s", r["video"], exc)
         out.append(v)
     return out
 

@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config
+
+log = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly",
           "https://www.googleapis.com/auth/yt-analytics.readonly"]
@@ -39,8 +42,8 @@ def status(cfg: dict, channel_id: str) -> dict:
             scopes = data.get("scopes") or []
             info["analytics"] = "https://www.googleapis.com/auth/yt-analytics.readonly" in (
                 scopes.split() if isinstance(scopes, str) else scopes)
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning("Token do YouTube ilegível em %s: %s", tp, exc)
     return info
 
 
@@ -68,8 +71,8 @@ def finish_auth(state: str, code: str) -> str:
         items = yt.channels().list(part="snippet", mine=True).execute().get("items", [])
         if items:
             data["_channel_title"] = items[0]["snippet"]["title"]
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("Conectado, mas não deu para ler o nome do canal: %s", exc)
     config.YOUTUBE_DIR.mkdir(parents=True, exist_ok=True)
     token_path(channel_id).write_text(json.dumps(data))
     return channel_id

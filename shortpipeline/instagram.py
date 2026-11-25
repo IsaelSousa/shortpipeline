@@ -10,7 +10,6 @@ Requer:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
 from pathlib import Path
@@ -220,8 +219,8 @@ async def upload(
             )
             if link_res.status_code == 200:
                 permalink = link_res.json().get("permalink")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Reel publicado, mas o link permanente não veio: %s", exc)
 
         if progress:
             progress(100)

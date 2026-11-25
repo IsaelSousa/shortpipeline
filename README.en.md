@@ -60,6 +60,24 @@ Elements repeated in every video so viewers recognize the channel in a second, w
 
 Sound styles available: Neutral (fits any niche), Horror and Tech.
 
+### Topics
+
+Under **Canais → Pauta** (Channels → Topics), set topics to explore, topics to avoid and the editorial tone. Automatic topics go through a selection that compares candidates with the channel's recent and queued videos. If the feed stories are rejected, the AI suggests alternatives. A topic you type in yourself takes priority.
+
+When creating a short, the **Pautas em alta** (Trending topics) button lists current Google Trends searches with their related news, so you can pick one with a click.
+
+### Timeline before rendering
+
+Before rendering, the video's **Timeline** tab shows the tracks like an editor does (scenes, captions, narration, sound effects and ambience), with a preview that plays the voice and sound. From there you can:
+
+- ask the AI for a correction, delete a scene or a sound, and edit a scene's narration;
+- insert a sound effect at the playhead (whoosh, impact, riser, blip, an effect described in text, or your own audio file);
+- balance voice, music and effects in the **Mixer de áudio** (audio mixer);
+- replace a scene's image or video and, under **Imagem e animação**, compare an upscaled version (Real-ESRGAN) and animated templates (Motion Canvas);
+- after rendering, **Checar render** (check render): resolution, duration and loudness, plus dark, static or silent sections.
+
+**Canais → Vídeo** holds the scene transitions (*Whip Pan*, *Zoom Punch*, *Cinematic*, *Glitch* or a hard cut), camera motion (zoom, horizontal or vertical pan, or **Automático**, which alternates) and animated emojis in the captions.
+
 ### Learning from Analytics
 
 Once the channel is connected, the pipeline periodically reads how the videos actually performed (views, % watched, retention curve) and an AI sums up **what to repeat and what to avoid**. These learnings go into the idea, script and critic prompts, and the formats that perform best get picked more often. The dashboard's **Analytics** page shows views, retention, subscribers, traffic sources and the videos published by the pipeline.
@@ -89,7 +107,8 @@ Requirements:
 - [`uv`](https://docs.astral.sh/uv/) and Python 3.12
 - `ffmpeg` with libass
 - At least one AI CLI, logged in: [`claude`](https://docs.claude.com/en/docs/claude-code), [`codex`](https://github.com/openai/codex) or `agy` (Google Antigravity)
-- Optional: an [ElevenLabs](https://elevenlabs.io) API key (without it, narration uses Edge TTS and sound design uses synthesized effects)
+- Optional: an [ElevenLabs](https://elevenlabs.io) API key (without it, narration uses Edge TTS and sound design uses the bundled sound packs or synthesized effects)
+- Optional: Node.js for the animated templates (Motion Canvas) and Real-ESRGAN for image upscaling (see below)
 
 ```bash
 git clone https://github.com/IsaelSousa/shortpipeline
@@ -99,12 +118,46 @@ uv run shortpipeline          # opens at http://localhost:8765
 
 In the dashboard:
 
-- **Pipeline**: create shorts, long-form videos or clips and follow each stage live. Inspect scripts, critic scores, images, sound and logs, preview with a multi-track editor timeline (scenes, subtitles, narration, sound effects/beds) and live mock-up before rendering, request AI corrections or edit directly, approve and rerun from any stage.
+- **Pipeline**: create shorts, long-form videos or clips and follow each stage live. In a video you can see the script, critic scores, images, sound, timeline and log, then approve it, edit it or redo it from any stage.
 - **Analytics**: channel metrics and what the pipeline has learned.
-- **Canais** (Channels): model per stage, voice, prompts, creative direction, visual style, captions, cover, review (with pause before render option), publishing and automatic schedule.
-- **Provedores** (Providers): CLI status, ElevenLabs API key, transcription, YouTube and TikTok connections (including automatic thumbnail upload for drafts and scheduled videos).
+- **Canais** (Channels): model per stage, voice, prompts, creative direction, visual style, captions, cover, review (optionally approving before the render), publishing and automatic schedule.
+- **Provedores** (Providers): CLI status, ElevenLabs API key, transcription, YouTube, Instagram, notifications and connection diagnostics.
 
-Background music: put MP3s in `assets/music/<channel-id>/`. One is picked at random per video.
+### Your own sounds and music
+
+**Background music**: put MP3s in `assets/music/<channel-id>/`. One is picked at random per video. The folder is ignored by git.
+
+**Effects and ambience**: create a folder in `data/sound-packs/` (also ignored by git, for sounds you can't redistribute, such as Pixabay's) and name the files after the kind of sound:
+
+```
+data/sound-packs/my-horror-sounds/
+  pack.json        {"styles": ["terror"], "tags": {"ambience": ["paranormal", "eerie"]}}
+  impact.mp3       used on scares and reveals instead of the default impact
+  scream-1.mp3     variations of the same sound: one is picked at random each time
+  scream-2.mp3
+  ambience-1.mp3   default ambience when ElevenLabs isn't available
+  ambience-rain.mp3
+```
+
+- `whoosh`, `impact`, `riser` and `blip` replace the default transition and beat sounds.
+- Any other name (`scream`, `door`, `thunder`…) becomes an effect the script can ask for. It's used when the effect's description contains the word, in English or Portuguese (e.g. "woman screaming" or "grito" use a `scream`). The script AI gets the list of available sounds.
+- `ambience` and `ambience-<word>` are ambience beds, picked from the scene's description.
+- `pack.json` is optional. `styles` limits the pack to channel sound styles, and `tags` adds keywords.
+- In the timeline, **Adicionar SFX** (Add SFX) lists your sounds under **Sua biblioteca** (Your library).
+
+Your sounds take priority over ElevenLabs. The CC0 packs in `assets/sound-packs/` are only used when nothing else is available.
+
+### Motion Canvas and Real-ESRGAN (optional)
+
+**Motion Canvas.** With Node.js installed, run in `motion-canvas/`:
+
+```bash
+npm ci
+npx playwright install chromium   # Chromium only renders the templates, locally
+npm run build
+```
+
+**Real-ESRGAN.** Put the `realesrgan-ncnn-vulkan` executable on your PATH or in `data/tools/realesrgan/`, with `realesrgan-x4plus.param` and `realesrgan-x4plus.bin` in a `models/` subfolder next to it. Vulkan is required. Upscaling is optional and keeps the original image. [Official release](https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.2.5.0)
 
 ## Connecting YouTube (upload, drafts and Analytics)
 
@@ -113,37 +166,24 @@ Background music: put MP3s in `assets/music/<channel-id>/`. One is picked at ran
 3. Create an OAuth client of type **Desktop app** and save the JSON to `data/youtube/client_secret.json` (or set the path in the dashboard).
 4. In the dashboard, under **Canais**, click **Conectar YouTube** and pick the channel's account. Do it on the machine running the server (`localhost`), because the login redirect points to `localhost`.
 
-Until your Google app is verified, videos uploaded through the API stay private.
-
-## Connecting TikTok (upload and drafts)
-
-1. In [TikTok for Developers](https://developers.tiktok.com/), create a developer app.
-2. Add the **TikTok Login Kit** and **Content Posting API** products.
-3. In *Redirect URI*, configure: `http://localhost:8765/api/tiktok/callback`.
-4. In the dashboard, under **Provedores**, enter your **Client Key** and **Client Secret**.
-5. Under **Canais**, click **Conectar TikTok** to authorize the channel account. You can also upload any rendered video with 1 click using the **"Enviar para o TikTok"** button.
+Until your Google app is verified, videos uploaded through the API stay private. The cover is uploaded as the thumbnail for drafts and scheduled videos too.
 
 ## Publishing to Instagram Reels
 
-Direct publishing using Meta Graph API v21.0 with resumable binary upload (no public domain or ngrok needed):
-1. In [developers.facebook.com](https://developers.facebook.com/), create a Business App and add the **Instagram Graph API**.
-2. Generate a 60-day Long-Lived User Access Token with `instagram_basic` and `instagram_content_publish` permissions.
-3. Retrieve your **Instagram Business Account ID**.
-4. In the dashboard, under **Provedores** (or per-channel in **Canais**), enter the Access Token and Account ID.
-5. In **Canais → Revisão e publicação**, enable automatic Reels publishing on upload, or use the **"Publicar no Reels"** button in any completed video modal.
+Uploads go through the Meta Graph API v21.0 with a direct file upload, so you don't need a public domain or ngrok.
 
-## Real-time Notifications (Telegram & Discord)
+1. In [developers.facebook.com](https://developers.facebook.com/), create a Business app and add the **Instagram Graph API**.
+2. Generate a long-lived access token (60 days) with the `instagram_basic` and `instagram_content_publish` permissions.
+3. Get your **Instagram Business Account ID**.
+4. In the dashboard, under **Provedores** (or **Canais**), enter the token and the account ID.
+5. Under **Canais → Revisão e publicação**, turn on automatic Reels publishing, or use the **Publicar no Reels** button on a finished video.
 
-Get immediate notifications with cover preview when a video is waiting for approval or when it finishes publishing:
-- **Telegram**: create a bot via [@BotFather](https://t.me/BotFather), get your Token and Chat ID. In **Provedores**, fill them in and click "Enviar teste no Telegram".
-- **Discord**: in your Discord server channel, create a Webhook integration, paste the URL in **Provedores** and test it.
+## Telegram and Discord notifications
 
-## Google Trends Radar & Timeline Studio
+Get a message with the cover when a video is waiting for approval, gets published or fails:
 
-- **Hot Trending Topics**: when creating a new short, click **"🔥 Ver tendências no Google Trends"** to load current viral searches and news with 1 click.
-- **Audio Mixer**: in the multi-track timeline, use the **"Mixer de Áudio"** button to balance narration, background music, and sound effects with 0% to 200% sliders.
-- **Insert SFX at Playhead**: place the timeline needle anywhere and click **"Adicionar SFX"** to insert Whoosh, Impact, Riser, or Blip sound effects at that exact second.
-- **Cinematic Transitions & Dynamic Emojis**: configure scene transitions (*Whip Pan*, *Zoom Punch*, *Cinematic*, *Glitch*) and animated emoji captions under **Canais → Vídeo**.
+- **Telegram**: create a bot with [@BotFather](https://t.me/BotFather), get its token and your chat ID, fill them in under **Provedores** and click **Enviar teste no Telegram** (send test).
+- **Discord**: in a channel of your server, create a webhook under *Integrations*, copy its URL and save it under **Provedores**.
 
 ## Network access
 
@@ -153,25 +193,38 @@ By default the dashboard only accepts connections from the machine it runs on. T
 SHORTPIPELINE_HOST=0.0.0.0 uv run shortpipeline
 ```
 
-The dashboard **has no login**: anyone who can reach it sees the settings (including the ElevenLabs API key) and can create or publish videos. Only use it on a trusted network, or use a VPN such as Tailscale.
+The dashboard **has no login**: anyone who can reach it sees the settings, including the ElevenLabs API key, the Instagram token, the Telegram bot token and the Discord webhook, and can create or publish videos. Only use it on a trusted network, or use a VPN such as Tailscale.
 
 ## Data
 
-Everything of yours lives in `data/`, which is not tracked by git: `config.json` (edited from the dashboard, includes the API key), `pipeline.db` (queue and logs), `jobs/<id>/` (script, audio, images, captions and `final.mp4`), `youtube/` (OAuth tokens), `learn/` (learnings) and `sfx_cache/`.
+Everything of yours lives in `data/`, which is not tracked by git: `config.json` (edited from the dashboard, includes keys and tokens), `pipeline.db` (queue and logs), `jobs/<id>/` (script, audio, images, captions and `final.mp4`), `youtube/` (OAuth tokens), `learn/` (learnings), `sound-packs/` (your sounds), `sfx_cache/`, `previews/` and `tools/`.
 
 Optional environment variables: `SHORTPIPELINE_PORT`, `SHORTPIPELINE_HOST`, `SHORTPIPELINE_DATA`, `ELEVENLABS_API_KEY`.
+
+## Development
+
+```bash
+uv run --group dev pytest       # tests (need ffmpeg)
+uvx ruff check shortpipeline tests
+```
+
+Tests run in a temporary data folder with mocked AI and voice, so they use no quota and need no logged-in CLIs. One of them makes a whole short, from script to `final.mp4`. GitHub Actions runs everything on every push.
+
+Where things live:
+
+| Folder | Contents |
+|---|---|
+| `shortpipeline/pipeline/` | the stages: `writing` (idea, script, critic), `media` (narration, images, cover, captions), `assembly` (sound, render, review, publishing), `clips` (clips) and `runner` (stage order) |
+| `shortpipeline/routes/` | the dashboard API: `jobs`, `timeline`, `channels` and `integrations` (YouTube, Analytics, notifications, diagnostics) |
+| `shortpipeline/providers/` | calls to the AI CLIs, voice, image and transcription |
+| `web/js/` | the dashboard, one file per page (plain JavaScript, no build step) |
+| `tests/` | pytest tests |
 
 ## Responsible use
 
 - Follow YouTube's policies on AI-generated content and label altered or synthetic content when the platform asks.
 - YouTube limits monetization of repetitive or reused content without your own contribution; review what goes live.
 - For clips, only use material you own or are authorized to use.
-
-## Camera motion
-
-Under **Canais → Vídeo → Movimento de câmera** (Channels → Video → Camera motion), choose a smooth zoom, horizontal pan, or vertical pan. The effect applies to every shot in image-based scenes for both shorts and long videos. **Automático** keeps the channel's existing motion pattern.
-
-The ShortPipeline renderer implements these movements with FFmpeg.
 
 ## License
 
@@ -187,5 +240,7 @@ Include the original copyright and license notices when distributing copies or s
 
 ## Credits
 
+- [Motion Canvas](https://github.com/motion-canvas/motion-canvas), under the MIT license, for the animated templates.
+- Offline sound effects and ambience by [Kenney](https://kenney.nl) and [OpenGameArt](https://opengameart.org) authors, under CC0. See the [file list, license and how to add packs](assets/sound-packs/README.md).
 - [Anton](https://fonts.google.com/specimen/Anton), [Creepster](https://fonts.google.com/specimen/Creepster), [Montserrat](https://fonts.google.com/specimen/Montserrat) and [Inter](https://fonts.google.com/specimen/Inter) fonts, under the [SIL Open Font License 1.1](https://openfontlicense.org) (each license text is in `assets/fonts/` and `web/fonts/`).
 - [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet) face detector from OpenCV Zoo, under the MIT license (`assets/models/LICENSE-YuNet.txt`).

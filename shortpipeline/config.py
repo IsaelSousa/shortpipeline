@@ -21,7 +21,6 @@ ASSETS_DIR = ROOT / "assets"
 FONTS_DIR = ASSETS_DIR / "fonts"
 MUSIC_DIR = ASSETS_DIR / "music"
 YOUTUBE_DIR = DATA_DIR / "youtube"
-TIKTOK_DIR = DATA_DIR / "tiktok"
 
 STAGES = ["ideia", "roteiro", "narracao", "imagens", "capa", "legendas", "som", "render", "revisao", "upload"]
 
@@ -36,6 +35,8 @@ KIND_STAGES = {
 }
 KIND_LABELS = {"short": "Short", "long": "Vídeo longo", "fonte": "Fonte de cortes", "corte": "Corte"}
 ALL_STAGES = list(dict.fromkeys(s for stages in KIND_STAGES.values() for s in stages))
+REVIEW_AFTER_STAGES = ("roteiro", "narracao", "imagens", "capa", "legendas", "som",
+                       "render", "download", "transcricao", "recorte")
 
 STAGE_LABELS = {
     "ideia": "Ideia",
@@ -141,8 +142,7 @@ Nicho: {niche}
 Títulos já publicados (não repita nem faça variações próximas):
 {history}
 
-Sugira UMA pauta nova, específica e com alto potencial de retenção.
-Responda SOMENTE com JSON: {{"topic": "descrição da pauta em 1-2 frases"}}"""
+Busque assuntos concretos dentro do nicho, com uma descoberta que sustente o vídeo."""
 
 LONG_PROMPT_TERROR = """Você escreve roteiros de VÍDEOS LONGOS para o canal de YouTube "{channel}".
 Nicho: {niche}
@@ -192,9 +192,9 @@ CRITIC_PROMPT = """Você é o editor-chefe do canal de YouTube "{channel}" (nich
 como um especialista em retenção de {kind}. A maior perda de público acontece nos primeiros 3 a 10 segundos e no final.
 
 Critérios (nota de 0 a 10 cada):
-- hook: a primeira frase prende em menos de 3 segundos? cria curiosidade ou choque já na primeira linha?
-- entrega: o fato/virada principal aparece cedo (até ~8s), sem enrolação nem introdução?
-- ritmo: frases curtas, cada cena traz algo novo, nada repetido?
+- hook: o primeiro quadro, a fala e o som previsto criam uma pergunta concreta logo no início?
+- entrega: há uma primeira resposta, evidência ou pista cedo? O final entrega o que a abertura promete?
+- ritmo: cada cena traz informação nova? Imagem e som ajudam a narrar em vez de repetir a fala?
 - final: termina forte, logo após a revelação, sem resumo e sem pedir like/comentário?
 - titulo: título curto, específico e curioso, no padrão do que funciona no canal?
 {insights}
@@ -209,7 +209,9 @@ Responda SOMENTE com JSON:
 Se a nota geral for menor que {min_score}, devolva em "script" o roteiro reescrito corrigindo os problemas: mesmo JSON,
 mesmos campos (title, description, tags, scenes com narration, image_prompt e os campos extras que existirem, cover_text,
 cover_prompt, characters...), mesmo número aproximado de cenas e duração parecida. Em "sfx", a "word" precisa existir na
-narração reescrita. Se a nota for {min_score} ou mais, "script" deve ser null.
+narração reescrita. Atualize direction (visual, audio, reveal), image_prompt e o plano sonoro das cenas que reescrever.
+Em temas factuais, mantenha a distinção entre evidência e hipótese e preserve as fontes fornecidas. Se a nota for
+{min_score} ou mais, "script" deve ser null.
 """
 
 LEARN_PROMPT = """Você é analista de crescimento do canal de YouTube "{channel}" (nicho: {niche}).
@@ -278,10 +280,6 @@ DEFAULT_CONFIG: dict = {
     "youtube": {
         "client_secret_path": str(YOUTUBE_DIR / "client_secret.json"),
     },
-    "tiktok": {
-        "client_key": "",
-        "client_secret": "",
-    },
     "instagram": {
         "access_token": "",
         "account_id": "",
@@ -296,7 +294,7 @@ DEFAULT_CONFIG: dict = {
             "enabled": True,
             "language": "português do Brasil",
             "niche": "Historinhas curtas de terror originais, narradas com voz grave, ilustradas com imagens sombrias.",
-            "idea": {"source": "llm", "rss_urls": []},
+            "idea": {"source": "llm", "rss_urls": [], "explore": [], "avoid": [], "tone": "", "require_approval": False},
             "models": {
                 "ideia": {"provider": "claude", "model": "sonnet", "fallback_provider": "", "fallback_model": ""},
                 "roteiro": {"provider": "claude", "model": "opus", "fallback_provider": "codex", "fallback_model": ""},
@@ -366,8 +364,9 @@ DEFAULT_CONFIG: dict = {
             "clips": {
                 "count": 5, "min_seconds": 25, "max_seconds": 60, "reframe": "face", "captions": True,
                 "cover_from_frame": True,
+                "review_selection": False, "media_cues": False,
             },
-            "review": {"require_approval": True, "approve_before_render": True},
+            "review": {"require_approval": True, "approve_before_render": True, "after": {}},
             "upload": {"mode": "manual", "privacy": "private", "category_id": "24", "made_for_kids": False},
             "schedule": {"enabled": False, "times": ["10:00", "19:00"]},
         },
@@ -376,7 +375,7 @@ DEFAULT_CONFIG: dict = {
             "enabled": True,
             "language": "português do Brasil",
             "niche": "Novidades e curiosidades de tecnologia: lançamentos, IA, gadgets, games e ciência.",
-            "idea": {"source": "rss", "rss_urls": [
+            "idea": {"source": "rss", "explore": [], "avoid": [], "tone": "", "require_approval": False, "rss_urls": [
                 "https://www.theverge.com/rss/index.xml",
                 "https://techcrunch.com/feed/",
                 "https://tecnoblog.net/feed/",
@@ -450,8 +449,9 @@ DEFAULT_CONFIG: dict = {
             "clips": {
                 "count": 5, "min_seconds": 25, "max_seconds": 60, "reframe": "face", "captions": True,
                 "cover_from_frame": True,
+                "review_selection": False, "media_cues": False,
             },
-            "review": {"require_approval": True, "approve_before_render": True},
+            "review": {"require_approval": True, "approve_before_render": True, "after": {}},
             "upload": {"mode": "manual", "privacy": "private", "category_id": "28", "made_for_kids": False},
             "schedule": {"enabled": False, "times": ["12:00"]},
         },
@@ -491,6 +491,15 @@ def channel_defaults(cid: str, ch: dict | None = None) -> dict:
     return DEFAULT_CONFIG["channels"].get(cid) or _channel_template(ch)
 
 
+def _remove_legacy_tiktok(cfg: dict) -> None:
+    cfg.pop("tiktok", None)
+    for ch in cfg.get("channels", {}).values():
+        opts = ch.get("upload")
+        if isinstance(opts, dict):
+            opts.pop("tiktok_privacy", None)
+            opts.pop("publish_to_tiktok", None)
+
+
 def load() -> dict:
     with _lock:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -498,6 +507,7 @@ def load() -> dict:
             CONFIG_PATH.write_text(json.dumps(DEFAULT_CONFIG, ensure_ascii=False, indent=2))
             return copy.deepcopy(DEFAULT_CONFIG)
         cfg = json.loads(CONFIG_PATH.read_text())
+        _remove_legacy_tiktok(cfg)
         _merge_defaults(cfg, DEFAULT_CONFIG)
         for cid, ch in cfg.get("channels", {}).items():
             _migrate_channel(ch)
@@ -507,6 +517,7 @@ def load() -> dict:
 
 def save(cfg: dict) -> None:
     with _lock:
+        _remove_legacy_tiktok(cfg)
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         tmp = CONFIG_PATH.with_suffix(".tmp")
         tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2))

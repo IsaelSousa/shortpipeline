@@ -25,3 +25,20 @@ shortpipeline = "shortpipeline.server:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["motion-canvas"]
+
+[tool.ruff.lint]
+# só erros de verdade (nomes indefinidos, imports sobrando etc.); o estilo fica livre
+select = ["F"]

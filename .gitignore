@@ -2,3 +2,9 @@ __pycache__/
 .venv/
 data/
 *.pyc
+
+/motion-canvas/node_modules/
+/motion-canvas/dist/
+
+# sua música de fundo (normalmente com licença que não permite redistribuir)
+/assets/music/*

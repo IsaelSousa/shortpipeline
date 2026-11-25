@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import time
 from datetime import date, timedelta
 
-from . import config, db, upload
+from . import db, upload
+
+log = logging.getLogger(__name__)
 
 ANALYTICS_SCOPE = "https://www.googleapis.com/auth/yt-analytics.readonly"
 CACHE_TTL = 600
@@ -115,16 +118,16 @@ def _report_sync(channel_id: str, days: int) -> dict:
         for r in _rows_to_dicts(q(start, end, ["views", "estimatedMinutesWatched"], dimensions="creatorContentType")):
             content.append({"type": _content_label(r["creatorContentType"]), "views": r["views"],
                             "minutes": r["estimatedMinutesWatched"]})
-    except Exception:
-        pass  # dimensão não disponível para alguns canais
+    except Exception as exc:  # dimensão não disponível para alguns canais
+        log.info("Tipo de conteúdo indisponível no Analytics: %s", exc)
 
     traffic = []
     try:
         for r in _rows_to_dicts(q(start, end, ["views"], dimensions="insightTrafficSourceType", sort="-views")):
             src = r["insightTrafficSourceType"]
             traffic.append({"source": TRAFFIC_LABELS.get(src, src.replace("_", " ").title()), "views": r["views"]})
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("Fontes de tráfego indisponíveis no Analytics: %s", exc)
 
     top_rows = _rows_to_dicts(q(start, end, ["views", "estimatedMinutesWatched", "averageViewDuration",
                                              "averageViewPercentage", "likes", "subscribersGained"],

@@ -1,0 +1,28 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Lint (pyflakes)
+        run: uvx ruff check shortpipeline tests
+
+      - name: Sintaxe do painel
+        run: for f in web/js/*.js; do node --check "$f"; done
+
+      - name: Testes
+        run: uv run --group dev pytest -q

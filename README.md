@@ -58,6 +58,24 @@ Elementos que se repetem em todo vídeo, para o público reconhecer o canal em u
 
 Os estilos de som disponíveis são Neutro (serve para qualquer nicho), Terror e Tech.
 
+### Pautas
+
+Em **Canais → Pauta**, configure temas a explorar, temas a evitar e tom editorial. Pautas automáticas passam por uma seleção que compara as candidatas com os vídeos recentes do canal, incluindo a fila. Se as notícias dos feeds forem descartadas, a IA sugere alternativas. Uma pauta digitada à mão tem prioridade.
+
+Ao criar um short, o botão **Pautas em alta** lista as buscas do momento no Google Trends, com as notícias relacionadas, para escolher uma com um clique.
+
+### Timeline antes do render
+
+Antes de renderizar, a aba **Timeline** do vídeo mostra as faixas como num editor (cenas, legendas, narração, efeitos e ambiente), com prévia tocando a voz e o som. Nela dá para:
+
+- pedir uma correção para a IA, excluir uma cena ou um som e editar a narração de uma cena;
+- inserir um efeito sonoro no ponto do cursor (whoosh, impacto, riser, blip, um efeito descrito em texto ou um áudio seu);
+- ajustar o volume da voz, da música e dos efeitos no **Mixer de áudio**;
+- trocar a imagem ou o vídeo de uma cena e, em **Imagem e animação**, comparar uma versão ampliada (Real-ESRGAN) e templates animados (Motion Canvas);
+- depois do render, **Checar render**: resolução, duração e volume, e trechos escuros, parados ou em silêncio.
+
+Em **Canais → Vídeo** ficam as transições entre cenas (*Whip Pan*, *Zoom Punch*, *Cinematográfica*, *Glitch* ou corte seco), o movimento de câmera (aproximação, panorâmica lateral ou vertical, ou **Automático**, que alterna) e os emojis animados nas legendas.
+
 ### Aprendizado com o Analytics
 
 Com o canal conectado, o pipeline lê periodicamente o desempenho real dos vídeos (views, % assistida, curva de retenção) e uma IA resume **o que repetir e o que evitar**. Esses aprendizados entram nos prompts de pauta, roteiro e revisor, e os formatos que rendem mais passam a ser escolhidos mais vezes. A página **Analytics** do painel mostra views, retenção, inscritos, fontes de tráfego e os vídeos publicados pelo pipeline.
@@ -87,7 +105,8 @@ Requisitos:
 - [`uv`](https://docs.astral.sh/uv/) e Python 3.12
 - `ffmpeg` com libass
 - Pelo menos uma CLI de IA logada: [`claude`](https://docs.claude.com/en/docs/claude-code), [`codex`](https://github.com/openai/codex) ou `agy` (Google Antigravity)
-- Opcional: uma API key do [ElevenLabs](https://elevenlabs.io) (sem ela, a narração usa o Edge TTS e o som usa efeitos sintetizados)
+- Opcional: uma API key do [ElevenLabs](https://elevenlabs.io) (sem ela, a narração usa o Edge TTS e o som usa os pacotes de efeitos incluídos ou efeitos sintetizados)
+- Opcional: Node.js, para os templates animados (Motion Canvas), e o Real-ESRGAN, para ampliar imagens (veja abaixo)
 
 ```bash
 git clone https://github.com/IsaelSousa/shortpipeline
@@ -97,12 +116,46 @@ uv run shortpipeline          # abre em http://localhost:8765
 
 No painel:
 
-- **Pipeline**: crie shorts, vídeos longos ou cortes e acompanhe cada etapa ao vivo. Num vídeo dá para ver roteiro, notas do revisor, imagens, som e log, conferir a **timeline multi-faixas** estilo editor (cenas, legendas, locução, efeitos/ambientes) com preview em tempo real, pedir correções para a IA ou editar diretamente antes de renderizar, aprovar e refazer a partir de qualquer etapa.
+- **Pipeline**: crie shorts, vídeos longos ou cortes e acompanhe cada etapa ao vivo. Num vídeo dá para ver roteiro, notas do revisor, imagens, som, timeline e log, aprovar, editar e refazer a partir de qualquer etapa.
 - **Analytics**: métricas do canal e o que o pipeline aprendeu.
-- **Canais**: modelos por etapa, voz, prompts, direção criativa, estilo visual, legendas, capa, revisão (com opção de aprovação antes do render), publicação e agenda automática.
-- **Provedores**: status das CLIs, API key do ElevenLabs, transcrição e conexões com o YouTube e TikTok (com upload automático de capa para rascunhos e agendados).
+- **Canais**: modelos por etapa, voz, prompts, direção criativa, estilo visual, legendas, capa, revisão (com opção de aprovar antes do render), publicação e agenda automática.
+- **Provedores**: status das CLIs, API key do ElevenLabs, transcrição, YouTube, Instagram, avisos e diagnóstico das conexões.
 
-Música de fundo: coloque MP3s em `assets/music/<id-do-canal>/`. Um é sorteado por vídeo.
+### Sons e música próprios
+
+**Música de fundo**: coloque MP3s em `assets/music/<id-do-canal>/`. Um é sorteado por vídeo. A pasta fica fora do git.
+
+**Efeitos e ambientes**: crie uma pasta em `data/sound-packs/` (também fora do git, para sons que você não pode redistribuir, como os do Pixabay) e nomeie os arquivos pelo tipo de som:
+
+```
+data/sound-packs/meus-sons-de-terror/
+  pack.json        {"styles": ["terror"], "tags": {"ambience": ["paranormal", "sinistro"]}}
+  impact.mp3       usado nos sustos e revelações, no lugar do impacto padrão
+  scream-1.mp3     variações do mesmo som: uma é sorteada a cada uso
+  scream-2.mp3
+  ambience-1.mp3   ambiente padrão quando o ElevenLabs não está disponível
+  ambience-rain.mp3
+```
+
+- `whoosh`, `impact`, `riser` e `blip` substituem os sons padrão das transições e batidas.
+- Qualquer outro nome (`scream`, `door`, `thunder`…) vira um efeito que o roteiro pode pedir. Ele é usado quando a descrição do efeito tem a palavra, em inglês ou português (ex.: "woman screaming" ou "grito" usam um `scream`). A IA do roteiro recebe a lista dos sons disponíveis.
+- `ambience` e `ambience-<palavra>` são ambientes, escolhidos pela descrição da cena.
+- O `pack.json` é opcional. `styles` limita o pacote a estilos de som do canal, e `tags` acrescenta palavras-chave.
+- Na timeline, **Adicionar SFX** mostra os seus sons em **Sua biblioteca**.
+
+Os seus sons têm prioridade sobre o ElevenLabs. Os pacotes CC0 de `assets/sound-packs/` só entram quando nada mais está disponível.
+
+### Motion Canvas e Real-ESRGAN (opcionais)
+
+**Motion Canvas.** Com o Node.js instalado, rode na pasta `motion-canvas/`:
+
+```bash
+npm ci
+npx playwright install chromium   # o Chromium só renderiza os templates, localmente
+npm run build
+```
+
+**Real-ESRGAN.** Coloque o executável `realesrgan-ncnn-vulkan` no PATH ou em `data/tools/realesrgan/`, com `realesrgan-x4plus.param` e `realesrgan-x4plus.bin` na subpasta `models/` ao lado dele. Precisa de Vulkan. A ampliação é opcional e mantém a imagem original. [Distribuição oficial](https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.2.5.0)
 
 ## Conectar o YouTube (upload, rascunho e Analytics)
 
@@ -111,37 +164,24 @@ Música de fundo: coloque MP3s em `assets/music/<id-do-canal>/`. Um é sorteado 
 3. Crie uma credencial OAuth do tipo **App para computador** e salve o JSON em `data/youtube/client_secret.json` (ou informe o caminho no painel).
 4. No painel, em **Canais**, clique em **Conectar YouTube** e escolha a conta do canal. Faça isso pelo próprio computador (`localhost`), porque o retorno do login aponta para `localhost`.
 
-Enquanto o app do Google não passar pela verificação, os uploads feitos pela API ficam privados.
-
-## Conectar o TikTok (upload e rascunhos)
-
-1. No [TikTok for Developers](https://developers.tiktok.com/), crie um aplicativo de desenvolvedor.
-2. Adicione os produtos **TikTok Login Kit** e **Content Posting API**.
-3. Em *Redirect URI*, cadastre: `http://localhost:8765/api/tiktok/callback`.
-4. No painel, em **Provedores**, insira o **Client Key** e **Client Secret** do TikTok.
-5. Em **Canais**, clique em **Conectar TikTok** para autorizar a conta do canal. Você também pode enviar qualquer vídeo renderizado com 1 clique pelo botão **"Enviar para o TikTok"**.
+Enquanto o app do Google não passar pela verificação, os uploads feitos pela API ficam privados. A capa é enviada como thumbnail também nos rascunhos e agendados.
 
 ## Publicar no Instagram Reels
 
-Publicação direta de Reels usando a Meta Graph API v21.0 com upload binário resumível direto (sem necessidade de ngrok ou servidor público):
-1. Em [developers.facebook.com](https://developers.facebook.com/), crie um aplicativo Empresarial e adicione a **Instagram Graph API**.
-2. Gere um Access Token de longa duração (Long-Lived Token, 60 dias) com permissões `instagram_basic` e `instagram_content_publish`.
-3. Obtenha o seu **Instagram Business Account ID**.
-4. No painel, em **Provedores** (ou em **Canais**), insira o Access Token e o Account ID.
-5. Em **Canais → Revisão e publicação**, ative a opção de publicar Reels automaticamente no upload, ou use o botão **"Publicar no Reels"** no modal do vídeo.
+O envio usa a Meta Graph API v21.0 com upload direto do arquivo, sem precisar de domínio público nem ngrok.
 
-## Notificações em Tempo Real (Telegram e Discord)
+1. Em [developers.facebook.com](https://developers.facebook.com/), crie um app do tipo Empresa e adicione a **Instagram Graph API**.
+2. Gere um token de acesso de longa duração (60 dias) com as permissões `instagram_basic` e `instagram_content_publish`.
+3. Pegue o **ID da conta Business do Instagram**.
+4. No painel, em **Provedores** (ou em **Canais**), informe o token e o ID da conta.
+5. Em **Canais → Revisão e publicação**, ligue o envio automático para o Reels, ou use o botão **Publicar no Reels** num vídeo pronto.
 
-Receba avisos instantâneos com foto de capa quando um vídeo estiver aguardando aprovação ou for publicado:
-- **Telegram**: crie um bot via [@BotFather](https://t.me/BotFather), obtenha o Token e descubra seu Chat ID. Em **Provedores**, preencha e clique em "Enviar teste no Telegram".
-- **Discord**: em um canal do seu servidor Discord, crie uma Integração via Webhook, copie a URL e salve em **Provedores**.
+## Avisos no Telegram e no Discord
 
-## Radar Google Trends & Edição na Timeline
+Receba um aviso com a capa quando um vídeo estiver esperando aprovação, for publicado ou falhar:
 
-- **Tendências em Alta**: ao criar um novo short, clique em **"🔥 Ver tendências no Google Trends"** para carregar em tempo real as pautas e notícias mais buscadas no Brasil com 1 clique.
-- **Mixer de Áudio**: na timeline, use o botão **"Mixer de Áudio"** para ajustar os volumes da voz, da trilha sonora e dos efeitos com sliders de 0% a 200%.
-- **Inserir SFX na Agulha**: posicione o cursor na timeline e clique em **"Adicionar SFX"** para inserir Whoosh, Impacto, Riser, Blip ou efeitos sonoros personalizados no segundo exato.
-- **Transições Cinematográficas e Emojis**: configure em **Canais → Vídeo** transições como *Whip Pan*, *Zoom Punch*, *Cinematográfica* ou *Glitch*, além de animações de emojis automáticas nas legendas.
+- **Telegram**: crie um bot pelo [@BotFather](https://t.me/BotFather), pegue o token e o seu Chat ID, preencha em **Provedores** e clique em **Enviar teste no Telegram**.
+- **Discord**: num canal do seu servidor, crie um webhook em *Integrações*, copie a URL e salve em **Provedores**.
 
 ## Acesso pela rede
 
@@ -151,25 +191,38 @@ Por padrão o painel só aceita conexões do próprio computador. Para abrir no 
 SHORTPIPELINE_HOST=0.0.0.0 uv run shortpipeline
 ```
 
-O painel **não tem login**: quem acessar vê a configuração (incluindo a API key do ElevenLabs) e pode criar ou publicar vídeos. Use só em rede de confiança, ou prefira uma VPN como o Tailscale.
+O painel **não tem login**: quem acessar vê a configuração, incluindo a API key do ElevenLabs, o token do Instagram, o do bot do Telegram e o webhook do Discord, e pode criar ou publicar vídeos. Use só em rede de confiança, ou prefira uma VPN como o Tailscale.
 
 ## Dados
 
-Tudo o que é seu fica em `data/`, que está fora do git: `config.json` (editado pelo painel, inclui a API key), `pipeline.db` (fila e logs), `jobs/<id>/` (roteiro, áudios, imagens, legendas e `final.mp4`), `youtube/` (tokens OAuth), `learn/` (aprendizados) e `sfx_cache/`.
+Tudo o que é seu fica em `data/`, que está fora do git: `config.json` (editado pelo painel, inclui as chaves e tokens), `pipeline.db` (fila e logs), `jobs/<id>/` (roteiro, áudios, imagens, legendas e `final.mp4`), `youtube/` (tokens OAuth), `learn/` (aprendizados), `sound-packs/` (seus sons), `sfx_cache/`, `previews/` e `tools/`.
 
 Variáveis opcionais: `SHORTPIPELINE_PORT`, `SHORTPIPELINE_HOST`, `SHORTPIPELINE_DATA`, `ELEVENLABS_API_KEY`.
+
+## Desenvolvimento
+
+```bash
+uv run --group dev pytest       # testes (precisam do ffmpeg)
+uvx ruff check shortpipeline tests
+```
+
+Os testes rodam numa pasta de dados temporária, com a IA e a voz simuladas: não gastam cota nem precisam das CLIs logadas. Um deles gera um short inteiro, do roteiro ao `final.mp4`. O GitHub Actions roda tudo a cada push.
+
+Onde fica cada parte:
+
+| Pasta | O que tem |
+|---|---|
+| `shortpipeline/pipeline/` | as etapas: `writing` (ideia, roteiro, revisor), `media` (narração, imagens, capa, legendas), `assembly` (som, render, revisão, publicação), `clips` (cortes) e `runner` (ordem das etapas) |
+| `shortpipeline/routes/` | a API do painel: `jobs`, `timeline`, `channels` e `integrations` (YouTube, Analytics, avisos, diagnóstico) |
+| `shortpipeline/providers/` | chamadas às CLIs de IA, voz, imagem e transcrição |
+| `web/js/` | o painel, um arquivo por página (JavaScript puro, sem build) |
+| `tests/` | testes com pytest |
 
 ## Uso responsável
 
 - Siga as políticas do YouTube sobre conteúdo gerado por IA e marque o conteúdo alterado/sintético quando a plataforma pedir.
 - O YouTube limita a monetização de conteúdo repetitivo ou reaproveitado sem contribuição própria; revise o que vai ao ar.
 - Para cortes, use apenas material seu ou com autorização.
-
-## Movimento de câmera
-
-Em **Canais → Vídeo → Movimento de câmera**, escolha aproximação suave, panorâmica lateral suave ou panorâmica vertical suave. O efeito é aplicado a cada plano das cenas feitas a partir de imagens, em shorts e vídeos longos. A opção **Automático** mantém a alternância de movimentos do canal.
-
-Os movimentos são implementados no renderizador do ShortPipeline com FFmpeg.
 
 ## Licença
 
@@ -185,5 +238,7 @@ Ao distribuir cópias ou partes substanciais do material MIT, inclua o aviso de 
 
 ## Créditos
 
+- [Motion Canvas](https://github.com/motion-canvas/motion-canvas), sob a licença MIT, para os templates animados.
+- Efeitos e ambientes offline de [Kenney](https://kenney.nl) e de autores do [OpenGameArt](https://opengameart.org), sob CC0. Veja a [lista de arquivos, a licença e como adicionar pacotes](assets/sound-packs/README.md).
 - Fontes [Anton](https://fonts.google.com/specimen/Anton), [Creepster](https://fonts.google.com/specimen/Creepster), [Montserrat](https://fonts.google.com/specimen/Montserrat) e [Inter](https://fonts.google.com/specimen/Inter), sob a [SIL Open Font License 1.1](https://openfontlicense.org) (texto de cada uma em `assets/fonts/` e `web/fonts/`).
 - Detector de rostos [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet) do OpenCV Zoo, sob a licença MIT (`assets/models/LICENSE-YuNet.txt`).

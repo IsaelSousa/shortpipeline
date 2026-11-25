@@ -5,10 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 import random
+import re
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from . import config
-from .providers import ProviderError, run
+from .providers import ProviderError, resolve_bin, run
 
 W, H, FPS = 1080, 1920, 30
 XFADE = 0.35  # duração da transição entre cenas, em segundos
@@ -22,10 +24,46 @@ async def ffprobe_duration(path: Path) -> float:
     return float(json.loads(out)["format"]["duration"])
 
 
+async def has_audio_stream(path: Path) -> bool:
+    code, out, err = await run(["ffprobe", "-v", "error", "-select_streams", "a:0",
+                                "-show_entries", "stream=index", "-of", "csv=p=0", str(path)], timeout=30)
+    if code:
+        raise ProviderError(f"Não foi possível inspecionar o áudio: {err[-300:]}")
+    return bool(out.strip())
+
+
 async def ffmpeg(args: list[str], timeout: int = 900) -> None:
     code, _, err = await run(["ffmpeg", "-y", "-hide_banner", "-v", "error", *args], timeout=timeout)
     if code != 0:
         raise ProviderError(f"ffmpeg falhou: {err[-800:]}")
+
+
+async def clip_media_cues(source: Path) -> dict[str, list[float]]:
+    base = ["ffmpeg", "-hide_banner", "-nostdin", "-v", "info", "-i", str(source)]
+
+    async def scan(args: list[str], pattern: str) -> list[float]:
+        try:
+            code, _, log = await run([*base, *args, "-f", "null", "-"], timeout=180)
+        except TimeoutError:
+            return []
+        if code:
+            return []
+        points = [round(float(value), 1) for value in re.findall(pattern, log)]
+        spaced = []
+        for point in points:
+            if not spaced or point - spaced[-1] >= 2:
+                spaced.append(point)
+        if len(spaced) > 80:
+            spaced = [spaced[round(i * (len(spaced) - 1) / 79)] for i in range(80)]
+        return spaced
+
+    cuts, peaks = await asyncio.gather(
+        scan(["-an", "-vf", "fps=4,scale=320:-2,select='gt(scene,0.35)',showinfo"], r"pts_time:\s*([\d.]+)"),
+        scan(["-vn", "-af", "aresample=16000,asetnsamples=n=8000,astats=metadata=1:reset=1,"
+              "ametadata=mode=select:key=lavfi.astats.Overall.Peak_level:value=-6:function=greater,"
+              "ametadata=mode=print:key=lavfi.astats.Overall.Peak_level"], r"pts_time:\s*([\d.]+)"),
+    )
+    return {"mudancas_de_plano": cuts, "picos_de_audio": peaks}
 
 
 # ------------------------------------------------------------------ áudio
@@ -256,12 +294,58 @@ def pick_music(channel_id: str) -> Path | None:
     return random.choice(tracks) if tracks else None
 
 
+MOTION_PROJECT = config.ROOT / "motion-canvas"
+
+
+def scene_media_path(job_dir: Path, name: str | None) -> Path | None:
+    if not name or Path(name).name != name:
+        return None
+    root = (job_dir / "scene-media").resolve()
+    path = (root / name).resolve()
+    return path if path.parent == root and path.is_file() else None
+
+
+async def scene_video_clip(source: Path, duration: float, dest: Path, frame: tuple[int, int]) -> None:
+    width, height = frame
+    await ffmpeg(["-stream_loop", "-1", "-i", str(source), "-map", "0:v:0", "-an",
+                  "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+                         f"crop={width}:{height},setsar=1,fps={FPS},format=yuv420p",
+                  "-frames:v", str(max(1, round(duration * FPS))), "-c:v", "libx264",
+                  "-preset", "veryfast", "-crf", "18", str(dest)])
+
+
+async def motion_clip(image: Path, duration: float, dest: Path, frame: tuple[int, int], settings: dict) -> None:
+    if not (MOTION_PROJECT / "dist" / "scene.js").is_file():
+        raise ProviderError("Motion Canvas indisponível. Execute npm ci e npm run build em motion-canvas.")
+    width, height = frame
+    frames = max(1, round(duration * FPS))
+    with TemporaryDirectory(dir=dest.parent) as directory:
+        folder = Path(directory)
+        spec = {**settings, "duration": frames / FPS, "width": width, "height": height, "fps": FPS}
+        if settings["template"] != "comparison":
+            background = folder / "background.jpg"
+            await ffmpeg(["-i", str(image), "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+                          f"crop={width}:{height}", "-frames:v", "1", str(background)])
+            spec["image"] = str(background)
+        spec_file = folder / "scene.json"
+        spec_file.write_text(json.dumps(spec), encoding="utf-8")
+        code, _, err = await run([resolve_bin("node"), str(MOTION_PROJECT / "render.mjs"), str(spec_file), str(folder)],
+                                  timeout=max(90, int(duration * 35)))
+        if code:
+            raise ProviderError(f"Motion Canvas falhou: {err[-600:]}")
+        if len(list(folder.glob("[0-9]*.jpg"))) != frames:
+            raise ProviderError(f"Motion Canvas não exportou os {frames} quadros esperados")
+        await ffmpeg(["-framerate", str(FPS), "-i", str(folder / "%06d.jpg"), "-c:v", "libx264",
+                      "-preset", "veryfast", "-crf", "18", "-vf", "setsar=1,format=yuv420p", "-an", str(dest)])
+
+
 async def render_video(job_dir: Path, images: list[Path], durations: list[float], narration: Path,
                        ass: Path | None, video: dict, channel_id: str, dest: Path, log=None,
                        cover: Path | None = None, cover_seconds: float = 0.3,
                        frame: tuple[int, int] = (W, H), shots: list[list[float]] | None = None,
                        beats: list[float] | None = None, sfx: Path | None = None, flash: bool = False,
-                       meter: dict | None = None) -> None:
+                       meter: dict | None = None, motions: list[dict | None] | None = None,
+                       scene_videos: list[Path | None] | None = None) -> None:
     """`shots`: durações dos planos de cada cena; `beats`: instantes (s) de susto/revelação, que ganham
     tremor, flash (se `flash`) e um respiro na música; `sfx`: trilha de efeitos já mixada;
     `meter`: selo de nota no fim do vídeo ({"score", "label", "start", "end", "color"})."""
@@ -282,8 +366,16 @@ async def render_video(job_dir: Path, images: list[Path], durations: list[float]
             sh[-1] += lens[i] - sum(sh)  # o último plano absorve a sobra da transição
         shake = [(b - starts[i] - 0.05, b - starts[i] + 0.45) for b in beats if starts[i] <= b < starts[i] + lens[i]]
         async with sem:
-            await scene_clip(images[i], lens[i], i, clips_dir / f"{i:02d}.mp4", frame, sh, shake,
-                             camera_motion=video.get("camera_motion", ""))
+            clip = clips_dir / f"{i:02d}.mp4"
+            motion = motions[i] if motions and i < len(motions) else None
+            custom_video = scene_videos[i] if scene_videos else None
+            if custom_video:
+                await scene_video_clip(custom_video, lens[i], clip, frame)
+            elif motion:
+                await motion_clip(images[i], lens[i], clip, frame, motion)
+            else:
+                await scene_clip(images[i], lens[i], i, clip, frame, sh, shake,
+                                 camera_motion=video.get("camera_motion", ""))
             if log:
                 log(f"Cena {i + 1}/{n} renderizada")
 
