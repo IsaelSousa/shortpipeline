@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Animated Shorts** (new `animado` job type): 2D/2.5D motion graphics drawn by code from a validated, versioned JSON (`docs/motion/schema.v1.json`). New stages: research (facts tagged as verified, calculation, estimate or illustration), storyboard (AI picks catalog components and syncs actions to narration words; validation errors go back to the AI), assets (catalog report), preview (low resolution, per scene, cached) and quality (static-stretch detection, numbers not shown on screen, AI review that redoes only weak scenes). The engine (`motion-canvas/engine`) has an articulated character (walk, run, reactions, expressions, accessories), layered parallax scenery (city, nature, room, studio), objects with gravity and impact, camera follow/focus/shake/slow motion, speed and distance indicators tied to the physics, counters, callouts, bars and word-synced captions that avoid on-screen info. Only changed scenes are re-rendered. Plan and decisions in `docs/motion/PLANO.md`.
 - **Analytics-driven topics**: the learning step scores the channel's themes by real views, watch % and subscribers, stores each video's numbers and suggests new topics; the idea stage uses this as its main criterion (candidates in the best themes, weak themes dropped). Toggle per channel; suggested topics can be queued from the dashboard.
 - **Render check**: the timeline's "Checar render" inspects the final MP4 (resolution, duration, loudness) and flags dark, static or silent sections.
 - **Scene media tools**: replace a scene's image or video, preview a Real-ESRGAN upscale and Motion Canvas templates before rendering.
@@ -27,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README reorganized: features, setup of each integration, development and credits.
 
 ### Fixed
+- Ambience was too quiet to hear in the final video: beds are now leveled to a common loudness before the channel's ambience volume is applied (the synthesized fallback sat around 30 dB below the voice). Mixes made before this are rebuilt automatically when the timeline is opened or the video is rendered, using the channel's current ambience volume, and the tech and neutral defaults go from 0.08 and 0.10 to 0.14.
+- Timeline edits made after a render (removing or adding sounds, scene media, audio levels) never reached the video: a "Renderizar de novo" button re-renders it, and the panel flags pending changes.
+- Timeline sound previews failed after the sound list changed, or when Chrome rejected `play()` while still playing; they now fall back to downloading the file.
 - Notification links opened the job list instead of the job (`#jobs/<id>` instead of `#job/<id>`).
 
 ### Removed

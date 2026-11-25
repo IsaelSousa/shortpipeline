@@ -13,6 +13,7 @@ from .writing import stage_ideia, stage_roteiro
 from .media import stage_capa, stage_imagens, stage_legendas, stage_narracao
 from .assembly import stage_render, stage_revisao, stage_som, stage_upload
 from .clips import stage_download, stage_recorte, stage_selecao, stage_transcricao
+from .animated import stage_assets, stage_pesquisa, stage_preview, stage_qualidade, stage_storyboard
 
 STAGE_FUNCS = {
     "ideia": stage_ideia,
@@ -29,6 +30,11 @@ STAGE_FUNCS = {
     "transcricao": stage_transcricao,
     "selecao": stage_selecao,
     "recorte": stage_recorte,
+    "pesquisa": stage_pesquisa,
+    "storyboard": stage_storyboard,
+    "assets": stage_assets,
+    "preview": stage_preview,
+    "qualidade": stage_qualidade,
 }
 
 

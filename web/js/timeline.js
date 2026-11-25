@@ -36,14 +36,21 @@ async function renderTimeline(body, job, load, initialScene = timelineScene) {
   let soloUrl = null;
   let videoEl = $("#mainVideo");
 
-  if (tl.audio?.narration_url) {
-    audioNarration = new Audio(tl.audio.narration_url);
-    audioNarration.preload = "auto";
+  // se o player não carregar o arquivo (proxy, pedido parcial), baixa inteiro e toca da memória
+  function trackAudio(url) {
+    const a = new Audio(url);
+    a.preload = "auto";
+    a.addEventListener("error", async () => {
+      try {
+        const res = await fetch(url, { cache: "no-store" });
+        if (res.ok) a.src = URL.createObjectURL(await res.blob());
+        else console.error("Timeline: faixa não carregou", url, res.status);
+      } catch (e) { console.error("Timeline: faixa não carregou", url, e); }
+    }, { once: true });
+    return a;
   }
-  if (tl.audio?.sfx_url) {
-    audioSfx = new Audio(tl.audio.sfx_url);
-    audioSfx.preload = "auto";
-  }
+  if (tl.audio?.narration_url) audioNarration = trackAudio(tl.audio.narration_url);
+  if (tl.audio?.sfx_url) audioSfx = trackAudio(tl.audio.sfx_url);
 
   function cleanupAudio() {
     pausePlayback();
@@ -66,27 +73,71 @@ async function renderTimeline(body, job, load, initialScene = timelineScene) {
     pausePlayback();
     if (wasPlaying) return;
     soloUrl = url;
+    const mine = () => soloUrl === url;
 
-    function tryFormat(src, fallback) {
+    // toca um endereço; resolve quando o som começa de fato. O Chrome às vezes rejeita o play() com AbortError
+    // e toca mesmo assim, então só conta como falha um erro de carregamento, o bloqueio de som ou a demora.
+    const attempt = (src) => new Promise((resolve, reject) => {
+      soloAudio?.pause();
       const clip = new Audio(src);
       soloAudio = clip;
+      let settled = false;
+      const done = (fn, value) => { if (!settled) { settled = true; clearTimeout(timer); fn(value); } };
+      const timer = setTimeout(() => {
+        clip.pause();
+        done(reject, new Error("o som não começou em 10 s"));
+      }, 10000);
       clip.onended = () => { if (soloAudio === clip) stopSolo(); };
-      const failed = (error) => {
-        if (soloAudio !== clip) return;
-        if (fallback && error?.name !== "NotAllowedError") {
-          clip.pause();
-          tryFormat(fallback);
+      clip.onplaying = () => done(resolve);
+      clip.onerror = () => done(reject, clip.error || new Error("erro de mídia"));
+      clip.play().catch((e) => { if (e?.name !== "AbortError") done(reject, e); });
+    });
+    const describe = (e) => {
+      if (typeof MediaError !== "undefined" && e instanceof MediaError) {
+        return `mídia ${e.code}${e.message ? `: ${e.message}` : ""}`;
+      }
+      return e?.name && e.name !== "Error" ? `${e.name}: ${e.message}` : (e?.message || String(e));
+    };
+    const pcm = url.includes("/timeline/audio/") ? `${url}${url.includes("?") ? "&" : "?"}pcm=true` : null;
+
+    (async () => {
+      const errors = [];
+      try { await attempt(url); return; } catch (e) {
+        if (!mine()) return;
+        if (e?.name === "NotAllowedError") {
+          stopSolo();
+          toast("O navegador bloqueou o som desta página. Libere o som do site e clique de novo.", true);
           return;
         }
-        stopSolo();
-        toast("Não foi possível ouvir este item da timeline.", true);
-      };
-      clip.onerror = failed;
-      clip.play().catch(failed);
-    }
-
-    const fallback = url.includes("/timeline/audio/") ? `${url}?pcm=true` : null;
-    tryFormat(url, fallback);
+        errors.push(e);
+      }
+      // plano B: baixa o arquivo inteiro e toca da memória (contorna proxy e pedidos parciais);
+      // se o formato não tocar, pede a versão em WAV
+      for (const src of [url, pcm].filter(Boolean)) {
+        let res;
+        try { res = await fetch(src, { cache: "no-store" }); } catch (e) { errors.push(e); continue; }
+        if (!mine()) return;
+        if (res.status === 410) {
+          stopSolo();
+          toast("Este som mudou desde que você abriu a página. Recarreguei a timeline.", true);
+          cleanupAudio();
+          renderTimeline(body, job, load, timelineScene);
+          return;
+        }
+        if (!res.ok) { errors.push(new Error(`HTTP ${res.status}`)); continue; }
+        const blobUrl = URL.createObjectURL(await res.blob());
+        if (!mine()) { URL.revokeObjectURL(blobUrl); return; }
+        try { await attempt(blobUrl); return; } catch (e) {
+          URL.revokeObjectURL(blobUrl);
+          if (!mine()) return;
+          errors.push(e);
+        }
+      }
+      if (!mine()) return;
+      stopSolo();
+      console.error("Timeline: som não tocou", url, errors);
+      toast(`Não foi possível ouvir este item (${errors.map(describe).join(" · ")}).`, true);
+    })();
   }
 
   const typeIcons = {
@@ -206,8 +257,10 @@ async function renderTimeline(body, job, load, initialScene = timelineScene) {
             ${tl.status?.is_rendered ? `<button class="btn sm" id="tlCheckRender">${icon("check", "sm")}Checar render</button>` : ""}
             <button class="btn sm" id="tlOpenAiBtn">${icon("wand", "sm")}Pedir correção</button>
             ${tl.status.is_waiting_render ? `<button class="btn sm primary" id="tlDirectRender">${icon("play", "sm")}Aprovar e Renderizar</button>` : ""}
+            ${tl.status.is_rendered && !tl.status.is_waiting_render && !["running", "queued"].includes(job.status) ? `<button class="btn sm ${tl.status.needs_render ? "primary" : ""}" id="tlDirectRender">${icon("refresh", "sm")}Renderizar de novo</button>` : ""}
           </div>
         </div>
+        ${tl.status.needs_render && !["running", "queued"].includes(job.status) ? `<p class="small" style="color:var(--warn);margin:8px 0 0">Você mudou a timeline depois do último render. As mudanças só entram no vídeo quando você clicar em <b>Renderizar de novo</b>.</p>` : ""}
 
         <div class="tl-workspace">
           <div class="tl-headers">

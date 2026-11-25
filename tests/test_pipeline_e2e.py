@@ -79,9 +79,47 @@ def test_short_end_to_end(channel, fake_ai):
 
     from shortpipeline.server import app
 
-    tl = TestClient(app).get(f"/api/jobs/{job['id']}/timeline").json()
+    client = TestClient(app)
+    tl = client.get(f"/api/jobs/{job['id']}/timeline").json()
     assert abs(tl["total_duration"] - narration) < 1.5
     assert len(tl["scenes"]) == len(SCRIPT["scenes"])
+    assert tl["status"]["is_rendered"] and not tl["status"]["needs_render"]
+
+    # remover um som depois do render: o painel pede um novo render, e ele refaz o final.mp4
+    events = job["data"]["sound"]["events"]
+    assert events, "o teste precisa de pelo menos um efeito (whoosh entre cenas)"
+    before = final.stat().st_mtime
+    old_urls = [e["audio_url"] for e in tl["sound_events"]]
+    assert all(old_urls) and len(old_urls) >= 2
+    second = client.get(old_urls[1]).content
+    res = client.post(f"/api/jobs/{job['id']}/delete-sfx", json={"index": 0})
+    assert res.status_code == 200, res.text
+    assert res.json()["timeline"]["status"]["needs_render"]
+    # uma página aberta antes da remoção continua ouvindo o som certo, e o removido avisa que mudou
+    assert client.get(old_urls[1]).content == second
+    assert client.get(old_urls[0]).status_code == 410
+    assert client.post(f"/api/jobs/{job['id']}/start-render").status_code == 200
+    job = db.get_job(job["id"])
+    assert job["status"] == "queued" and job["stages"]["render"]["status"] == "pending"
+    assert job["stages"]["som"]["status"] == "done"  # a edição do som não é refeita do zero
+    asyncio.run(asyncio.wait_for(run_job(job["id"]), timeout=600))
+    job = db.get_job(job["id"])
+    assert job["status"] == "done", job.get("error")
+    assert len(job["data"]["sound"]["events"]) == len(events) - 1
+    assert final.stat().st_mtime > before
+    assert not client.get(f"/api/jobs/{job['id']}/timeline").json()["status"]["needs_render"]
+
+    # um vídeo feito com a mixagem antiga (ambiente salvo a 0.01) é remixado ao abrir a timeline
+    bed = config.JOBS_DIR / job["id"] / "bed.wav"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "anoisesrc=d=3:a=0.02", str(bed)], check=True)
+    snd = {**job["data"]["sound"], "beds": [{"sound": "rain", "start": 0.0, "dur": 3.0, "volume": 0.01, "file": str(bed)}]}
+    snd.pop("mix_version", None)
+    db.update_job(job["id"], data={"sound": snd})
+    assert client.get(f"/api/jobs/{job['id']}/timeline").json()["status"]["needs_render"]
+    snd = db.get_job(job["id"])["data"]["sound"]
+    from shortpipeline import sound
+    assert snd["mix_version"] == sound.MIX_VERSION
+    assert snd["beds"][0]["volume"] == config.load()["channels"][channel]["creative"]["ambience_volume"]
 
 
 def test_failed_stage_marks_job_and_notifies(channel, monkeypatch):

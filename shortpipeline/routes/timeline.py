@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import json
 import math
+import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Literal
@@ -17,11 +18,29 @@ from fastapi import APIRouter, Body, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from .. import config, db
+from .. import sound as sound_mod
 from ..providers import ProviderError
 from ..worker import worker
 from .common import _job_or_404
 
 router = APIRouter()
+
+
+def _edited(job_id: str) -> None:
+    """Marca que a timeline mudou depois do último render (o painel pede para renderizar de novo)."""
+    db.update_job(job_id, data={"timeline_edited_at": time.time()})
+
+def _sound_key(item: dict) -> str:
+    """Identifica o som pelo arquivo e pela posição, para um link antigo não tocar o som errado."""
+    raw = f"{item.get('file')}|{item.get('at', item.get('start'))}"
+    return hashlib.sha1(raw.encode()).hexdigest()[:12]
+
+
+def _audio_url(job_id: str, track: str, i: int, item: dict) -> str | None:
+    if not _timeline_sound_path(item, job_id):
+        return None
+    return f"/api/jobs/{job_id}/timeline/audio/{track}/{i}?k={_sound_key(item)}"
+
 
 def _timeline_sound_path(item: dict, job_id: str) -> Path | None:
     from .. import sound
@@ -272,11 +291,11 @@ def build_timeline(job: dict) -> dict:
         "scenes": scenes,
         "captions": all_captions,
         "sound_events": [
-            {**item, "audio_url": f"/api/jobs/{job_id}/timeline/audio/events/{i}" if _timeline_sound_path(item, job_id) else None}
+            {**item, "audio_url": _audio_url(job_id, "events", i, item)}
             for i, item in enumerate(events)
         ],
         "sound_beds": [
-            {**item, "audio_url": f"/api/jobs/{job_id}/timeline/audio/beds/{i}" if _timeline_sound_path(item, job_id) else None}
+            {**item, "audio_url": _audio_url(job_id, "beds", i, item)}
             for i, item in enumerate(beds)
         ],
         "cover": {
@@ -294,6 +313,8 @@ def build_timeline(job: dict) -> dict:
             "is_waiting_render": (job.get("status") == "waiting_approval" and job.get("stage") == "render"
                                   and job["stages"].get("render", {}).get("status") != "review_pending"),
             "is_rendered": has_final_mp4,
+            "needs_render": has_final_mp4 and float(d.get("timeline_edited_at") or 0)
+            > (job_dir / "final.mp4").stat().st_mtime,
             "ready_to_render": (len(scenes) > 0 and (has_narration_wav or is_corte)),
             "approved_render": bool(d.get("approved_render")),
         }
@@ -301,8 +322,23 @@ def build_timeline(job: dict) -> dict:
 
 
 @router.get("/api/jobs/{job_id}/timeline")
-def job_timeline(job_id: str):
+async def job_timeline(job_id: str):
     job = _job_or_404(job_id)
+    snd = (job.get("data") or {}).get("sound") or {}
+    if ((snd.get("events") or snd.get("beds")) and snd.get("mix_version") != sound_mod.MIX_VERSION
+            and job_id not in worker.running and job.get("status") != "queued" and job["data"].get("durations")):
+        # mix salvo com uma versão antiga da mixagem: o player da timeline tocaria o som antigo
+        try:
+            cr = config.channel(config.load(), job["channel"]).get("creative") or {}
+        except KeyError:
+            cr = {}
+        async with _timeline_sound_lock:
+            new = await sound_mod.remix_saved(snd, sum(job["data"]["durations"]), config.JOBS_DIR / job_id / "sfx.wav",
+                                              cr.get("ambience_volume"))
+            db.update_job(job_id, data={"sound": new})
+        db.log(job_id, "Trilha de efeitos refeita com a mixagem atual (ambiente nivelado)")
+        _edited(job_id)
+        job = db.get_job(job_id)
     return build_timeline(job)
 
 
@@ -442,6 +478,7 @@ async def import_scene_media(job_id: str, index: int, file: UploadFile = File(..
             "name": Path(file.filename or "").name[:160], "credit": credit.strip()[:240], "source_url": source_url,
         }
         db.update_job(job_id, data={"script": current})
+    _edited(job_id)
     db.log(job_id, f"Mídia externa aplicada à cena {index + 1}")
     return {"ok": True}
 
@@ -451,6 +488,7 @@ def remove_scene_media(job_id: str, index: int):
     _, script, _, _ = _scene_visuals(job_id, index)
     script["scenes"][index].pop("media", None)
     db.update_job(job_id, data={"script": script})
+    _edited(job_id)
     return {"ok": True}
 
 
@@ -519,14 +557,23 @@ def set_scene_visuals(job_id: str, index: int, body: dict = Body(...)):
         else:
             scene.pop("upscale", None)
     db.update_job(job_id, data={"script": script})
+    _edited(job_id)
     return {"ok": True}
 
 
 @router.get("/api/jobs/{job_id}/timeline/audio/{track}/{index}")
-async def timeline_audio(job_id: str, track: Literal["events", "beds"], index: int, pcm: bool = False):
+async def timeline_audio(job_id: str, track: Literal["events", "beds"], index: int, pcm: bool = False,
+                         k: str | None = None):
     job = _job_or_404(job_id)
     items = (job["data"].get("sound") or {}).get(track)
-    if not isinstance(items, list) or not 0 <= index < len(items):
+    if not isinstance(items, list):
+        raise HTTPException(404)
+    if k and not (0 <= index < len(items) and _sound_key(items[index]) == k):
+        # a lista mudou depois que a página abriu (som removido ou refeito): procura o mesmo som
+        index = next((i for i, it in enumerate(items) if _sound_key(it) == k), -1)
+        if index < 0:
+            raise HTTPException(410, "A timeline mudou: recarregue")
+    if not 0 <= index < len(items):
         raise HTTPException(404)
     path = _timeline_sound_path(items[index], job_id)
     if path is None:
@@ -555,8 +602,16 @@ async def timeline_audio(job_id: str, track: Literal["events", "beds"], index: i
 @router.post("/api/jobs/{job_id}/start-render")
 async def start_render(job_id: str):
     """Aprova a timeline e inicia a renderização do vídeo."""
-    _job_or_404(job_id)
+    job = _job_or_404(job_id)
     await worker.stop(job_id)
+    if job["stages"].get("render", {}).get("status") == "done":
+        # já renderizado: refaz o render com as mudanças da timeline
+        published = bool(((job["data"].get("publish") or {}).get("video_id")))
+        db.reset_from(job_id, "render")
+        if published and "upload" in job["stages"]:
+            db.update_job(job_id, stages={"upload": {"status": "done"}})
+            db.log(job_id, "O vídeo já publicado não é substituído no YouTube: baixe o novo final.mp4", "warn",
+                   stage="render")
     db.update_job(job_id, data={"approved_render": True}, status="queued")
     db.log(job_id, "Timeline aprovada; iniciando renderização", stage="render")
     worker.wake()
@@ -704,6 +759,7 @@ async def _remix_sounds(job_id: str, d: dict, events: list[dict], beds: list[dic
     except ProviderError as exc:
         raise HTTPException(500, "Não foi possível remixar a timeline") from exc
     d["sound"]["mix"] = str(mix) if mix.is_file() else None
+    d["sound"]["mix_version"] = sound.MIX_VERSION
 
 
 @router.post("/api/jobs/{job_id}/delete-sfx")
@@ -733,10 +789,14 @@ async def delete_sfx(job_id: str, body: dict = Body(...)):
 
     d.setdefault("sound", {})["events"] = events
     d["sound"]["beds"] = beds
+    if removed_event.get("type") == "impact":  # o tranco visual do impacto sai junto com o som
+        hit = float(removed_event.get("at", 0)) + 0.05
+        d["sound"]["beats"] = [b for b in d["sound"].get("beats") or [] if abs(float(b) - hit) > 0.15]
 
     await _remix_sounds(job_id, d, events, beds)
 
     db.update_job(job_id, data=d)
+    _edited(job_id)
     name = removed_event.get("label") or removed_event.get("type") or "som"
     db.log(job_id, f"Efeito sonoro '{name}' removido da timeline")
     return {"ok": True, "timeline": build_timeline(db.get_job(job_id))}
@@ -772,6 +832,7 @@ async def delete_ambience(job_id: str, body: dict = Body(...)):
     await _remix_sounds(job_id, d, events, beds)
 
     db.update_job(job_id, data=d)
+    _edited(job_id)
     name = removed_bed.get("sound") or "ambiente"
     db.log(job_id, f"Som ambiente '{name}' removido da timeline")
     return {"ok": True, "timeline": build_timeline(db.get_job(job_id))}
@@ -910,8 +971,9 @@ async def _insert_timeline_sound(job_id: str, item: dict, track: str, total: flo
             await sound.build_mix(clean_events, clean_beds, total, temp_mix)
             temp_mix.replace(dest)
         snd = dict(job["data"].get("sound") or {})
-        snd.update(events=events, beds=beds, mix=str(dest))
+        snd.update(events=events, beds=beds, mix=str(dest), mix_version=sound.MIX_VERSION)
         db.update_job(job_id, data={"sound": snd})
+    _edited(job_id)
 
 
 @router.post("/api/jobs/{job_id}/import-audio")
@@ -989,5 +1051,6 @@ async def adjust_audio_levels(job_id: str, body: dict = Body(...)):
     d["audio_levels"] = levels
     video_cfg["audio_levels"] = levels
     db.update_job(job_id, data={"audio_levels": levels, "video": video_cfg})
+    _edited(job_id)
     db.log(job_id, f"Níveis de áudio atualizados: Voz {voice:.1f}x, Música {bgm:.1f}x, SFX {sfx:.1f}x")
     return {"ok": True, "levels": levels}

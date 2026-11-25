@@ -38,11 +38,12 @@
         <div class="segmented" id="nKind" style="align-self:flex-start">
           <button type="button" data-k="short"><svg class="i sm"><use href="#i-plus"/></svg>Short</button>
           <button type="button" data-k="long"><svg class="i sm"><use href="#i-film"/></svg>Vídeo longo</button>
+          <button type="button" data-k="animado"><svg class="i sm"><use href="#i-wand"/></svg>Animado</button>
           <button type="button" data-k="cortes"><svg class="i sm"><use href="#i-scissors"/></svg>Cortes</button>
         </div>
         <label class="field"><span>Canal</span><select id="nChan"></select></label>
 
-        <label class="field" data-for="short long">
+        <label class="field" data-for="short long animado">
           <span style="display:flex;align-items:center;justify-content:space-between">
             <span>Pauta</span>
             <button type="button" class="btn xs ghost" id="btnOpenTrends" style="font-weight:normal;padding:2px 8px;font-size:11px">🔥 Pautas em alta</button>
@@ -50,7 +51,7 @@
           <textarea id="nTopic" class="prose" placeholder="Opcional. Deixe vazio para a IA ou o RSS escolherem."></textarea>
         </label>
         <div id="trendsDrawer" hidden class="ai-chips" style="margin-top:-6px;margin-bottom:12px;max-height:120px;overflow-y:auto;background:var(--surface-2);padding:8px;border-radius:var(--radius-sm);border:1px solid var(--border)"></div>
-        <div class="row" data-for="short long" style="align-items:flex-end">
+        <div class="row" data-for="short long animado" style="align-items:flex-end">
           <label class="field" style="max-width:140px"><span>Quantidade</span><input id="nCount" type="number" min="1" max="20" value="1"></label>
           <label class="field" data-for="long" style="max-width:220px"><span>Duração (min)</span><input id="nMinutes" type="number" min="1" max="60" step="0.5"></label>
         </div>
@@ -127,6 +128,7 @@
   <script src="/static/js/dashboard.js"></script>
   <script src="/static/js/job.js"></script>
   <script src="/static/js/timeline.js"></script>
+  <script src="/static/js/animation.js"></script>
   <script src="/static/js/analytics.js"></script>
   <script src="/static/js/forms.js"></script>
   <script src="/static/js/channels.js"></script>

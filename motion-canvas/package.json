@@ -2,7 +2,9 @@
   "name": "shortpipeline-motion-canvas",
   "version": "1.0.0",
   "scripts": {
-    "build": "esbuild scene.js --bundle --platform=browser --format=iife --outfile=dist/scene.js"
+    "build": "npm run build:scene && npm run build:engine",
+    "build:scene": "esbuild scene.js --bundle --platform=browser --format=iife --outfile=dist/scene.js",
+    "build:engine": "esbuild engine/index.js --bundle --platform=browser --format=iife --outfile=dist/engine.js"
   },
   "license": "MIT",
   "type": "module",

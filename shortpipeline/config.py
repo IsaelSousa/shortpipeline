@@ -27,16 +27,21 @@ STAGES = ["ideia", "roteiro", "narracao", "imagens", "capa", "legendas", "som", 
 # Cada tipo de job tem a sua sequência de etapas.
 #   short: short gerado do zero (9:16)        long: vídeo longo gerado do zero (16:9)
 #   fonte: vídeo longo que vira cortes        corte: um short recortado de uma fonte
+#   animado: short em motion graphics 2D/2.5D montado por código a partir de um JSON (docs/motion)
+ANIMATED_STAGES = ["ideia", "pesquisa", "roteiro", "narracao", "storyboard", "assets", "som", "preview", "qualidade",
+                   "render", "revisao", "upload"]
 KIND_STAGES = {
     "short": STAGES,
     "long": STAGES,
     "fonte": ["download", "transcricao", "selecao"],
     "corte": ["recorte", "capa", "legendas", "render", "revisao", "upload"],
+    "animado": ANIMATED_STAGES,
 }
-KIND_LABELS = {"short": "Short", "long": "Vídeo longo", "fonte": "Fonte de cortes", "corte": "Corte"}
+KIND_LABELS = {"short": "Short", "long": "Vídeo longo", "fonte": "Fonte de cortes", "corte": "Corte",
+               "animado": "Short animado"}
 ALL_STAGES = list(dict.fromkeys(s for stages in KIND_STAGES.values() for s in stages))
 REVIEW_AFTER_STAGES = ("roteiro", "narracao", "imagens", "capa", "legendas", "som",
-                       "render", "download", "transcricao", "recorte")
+                       "render", "download", "transcricao", "recorte", "storyboard", "preview")
 
 STAGE_LABELS = {
     "ideia": "Ideia",
@@ -54,6 +59,11 @@ STAGE_LABELS = {
     "transcricao": "Transcrição",
     "selecao": "Seleção",
     "recorte": "Recorte",
+    "pesquisa": "Pesquisa",
+    "storyboard": "Storyboard",
+    "assets": "Assets",
+    "preview": "Preview",
+    "qualidade": "Qualidade",
 }
 
 
@@ -410,6 +420,10 @@ DEFAULT_CONFIG: dict = {
                 "position": "top", "darken": 0.25, "in_video": True, "in_video_seconds": 0.3,
                 "upload_thumbnail": True,
             },
+            "animated": {
+                "ai_review": True, "min_score": 7, "accent": "", "accent2": "#FDE047", "captions": True,
+                "caption_words": 3,
+            },
             "long": {
                 "target_minutes": 8, "seconds_per_image": 15, "captions": False, "caption_size": 72,
                 "chapters": True,
@@ -468,7 +482,7 @@ DEFAULT_CONFIG: dict = {
             },
             "creative": {
                 "cut_every": 2.5, "cut_every_long": 5, "sound": True, "sound_style": "tech",
-                "sfx_volume": 0.55, "ambience_volume": 0.08, "whoosh": True, "beat_fx": True, "max_sfx": 8,
+                "sfx_volume": 0.55, "ambience_volume": 0.14, "whoosh": True, "beat_fx": False, "max_sfx": 8,
                 "emotion_tags": True, "loop_ending": True,
                 "formats": [
                     "você sabia? (curiosidade surpreendente)",
@@ -494,6 +508,10 @@ DEFAULT_CONFIG: dict = {
                 "font": "Anton", "font_size": 0, "text_color": "#FFFFFF", "highlight_color": "#22D3EE",
                 "position": "top", "darken": 0.25, "in_video": True, "in_video_seconds": 0.3,
                 "upload_thumbnail": True,
+            },
+            "animated": {
+                "ai_review": True, "min_score": 7, "accent": "", "accent2": "#FDE047", "captions": True,
+                "caption_words": 3,
             },
             "long": {
                 "target_minutes": 8, "seconds_per_image": 15, "captions": False, "caption_size": 72,
@@ -547,7 +565,7 @@ def _generic_channel() -> dict:
                     "sharp focus on the subject, vertical 9:16 composition, no text, no logos")
     ch["video"].update(target_seconds=40, highlight_color="#FACC15", effects="none", music_volume=0.08)
     ch["cover"]["highlight_color"] = "#FACC15"
-    ch["creative"].update(sound_style="neutro", ambience_volume=0.1, formats=[
+    ch["creative"].update(sound_style="neutro", ambience_volume=0.14, formats=[
         "dica prática: o problema, a solução e o resultado",
         "você sabia? (um fato surpreendente e por que ele importa)",
         "mito ou verdade",

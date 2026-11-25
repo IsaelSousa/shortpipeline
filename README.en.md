@@ -86,6 +86,21 @@ Once the channel is connected, the pipeline periodically reads how the videos ac
 
 The same flow in 16:9: a long script with chapters, one image every N seconds, a 1280×720 thumbnail and chapters in the description. The length is configurable.
 
+### Animated Shorts (motion graphics)
+
+2D/2.5D motion-graphics Shorts built by code, in the style of science-curiosity and "what if…?" videos: articulated characters that walk, run and react, layered parallax scenery, objects with real physics, a camera that follows the action, speedometer, height ruler, counters and captions that move out of the way of the on-screen info. No video or image is AI-generated: the AI researches, writes the script and describes the scenes as JSON, and the engine draws every frame.
+
+```
+Idea → Research → Script → Narration → Storyboard → Assets → Sound → Preview → Quality → Render → Review → Publish
+```
+
+- **Research** separates verified facts, calculations, estimates and illustrations; the video's numbers come from it.
+- **Storyboard**: the AI picks components from the catalog (`assets/motion/registry.json`) and syncs actions to the narration's words. The JSON is validated ([schema](docs/motion/schema.v1.json)); errors go back to the AI to fix.
+- **Preview and quality**: a low-resolution preview per scene, checks for static stretches and numbers that never show on screen, and an AI review that redoes only the weak scene.
+- **Render**: only scenes that changed are rendered again; voice, music and effects use the same mix as regular Shorts.
+
+Create one under **Novo vídeo → Animado** (New video → Animated). The job's **Animação** tab shows the preview, quality report, research and scenes. It needs the engine built (see Motion Canvas below). Plan, decisions and limitations: [docs/motion/PLANO.md](docs/motion/PLANO.md) (Portuguese).
+
 ### Clips
 
 Turns a long video (link or file) into several shorts:
@@ -157,12 +172,12 @@ Your sounds take priority over ElevenLabs. The CC0 packs in `assets/sound-packs/
 
 ### Motion Canvas and Real-ESRGAN (optional)
 
-**Motion Canvas.** With Node.js installed, run in `motion-canvas/`:
+**Motion Canvas and the animation engine.** With Node.js installed, run in `motion-canvas/`:
 
 ```bash
 npm ci
-npx playwright install chromium   # Chromium only renders the templates, locally
-npm run build
+npx playwright install chromium   # Chromium only renders the templates and the animated Shorts, locally
+npm run build                     # builds dist/scene.js (templates) and dist/engine.js (animated Shorts)
 ```
 
 **Real-ESRGAN.** Put the `realesrgan-ncnn-vulkan` executable on your PATH or in `data/tools/realesrgan/`, with `realesrgan-x4plus.param` and `realesrgan-x4plus.bin` in a `models/` subfolder next to it. Vulkan is required. Upscaling is optional and keeps the original image. [Official release](https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.2.5.0)
@@ -222,7 +237,9 @@ Where things live:
 
 | Folder | Contents |
 |---|---|
-| `shortpipeline/pipeline/` | the stages: `writing` (idea, script, critic), `media` (narration, images, cover, captions), `assembly` (sound, render, review, publishing), `clips` (clips) and `runner` (stage order) |
+| `shortpipeline/pipeline/` | the stages: `writing` (idea, script, critic), `media` (narration, images, cover, captions), `assembly` (sound, render, review, publishing), `clips` (clips), `animated` (animated Shorts) and `runner` (stage order) |
+| `shortpipeline/motion/` | animated Shorts: JSON schema, catalog, physics, prompts and the bridge to the engine |
+| `motion-canvas/engine/` | the animation engine (characters, scenery, objects, camera, on-screen info, effects, captions) |
 | `shortpipeline/routes/` | the dashboard API: `jobs`, `timeline`, `channels` and `integrations` (YouTube, Analytics, notifications, diagnostics) |
 | `shortpipeline/providers/` | calls to the AI CLIs, voice, image and transcription |
 | `web/js/` | the dashboard, one file per page (plain JavaScript, no build step) |

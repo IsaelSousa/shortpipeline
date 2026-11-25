@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "note": "Catálogo dos componentes da engine de animação (motion-canvas/engine). Tudo aqui é desenhado por código no ShortPipeline (licença MIT do projeto). Assets do usuário ficam em data/motion-assets/registry.json, fora do git.",
+  "assets": [
+    {"id": "air_conditioner", "category": "objects/electronics", "tags": ["ar-condicionado", "aparelho", "janela", "eletrodoméstico"], "size_m": [0.8, 0.55], "actions": ["appear", "fall", "wobble", "shake", "move", "rotate", "vanish"], "style": "flat-2.5d", "version": 1, "license": "MIT (ShortPipeline)", "source": "engine/objects.js"},
+    {"id": "bracket", "category": "objects/miscellaneous", "tags": ["suporte", "mão francesa", "fixação"], "size_m": [0.9, 0.18], "actions": ["appear", "shake", "vanish"], "style": "flat-2.5d", "version": 1, "license": "MIT (ShortPipeline)", "source": "engine/objects.js"},
+    {"id": "crate", "category": "objects/miscellaneous", "tags": ["caixa", "carga", "madeira", "pacote"], "size_m": [0.7, 0.7], "actions": ["appear", "fall", "move", "rotate", "shake", "wobble", "vanish"], "style": "flat-2.5d", "version": 1, "license": "MIT (ShortPipeline)", "source": "engine/objects.js"},
+    {"id": "ball", "category": "objects/miscellaneous", "tags": ["bola", "esfera", "projétil"], "size_m": [0.24, 0.24], "actions": ["appear", "fall", "move", "rotate", "vanish"], "style": "flat-2.5d", "version": 1, "license": "MIT (ShortPipeline)", "source": "engine/objects.js"},
+    {"id": "flower_pot", "category": "objects/furniture", "tags": ["vaso", "planta", "varanda"], "size_m": [0.35, 0.5], "actions": ["appear", "fall", "wobble", "shake", "vanish"], "style": "flat-2.5d", "version": 1, "license": "MIT (ShortPipeline)", "source": "engine/objects.js"},
+    {"id": "phone", "category": "objects/electronics", "tags": ["celular", "smartphone", "telefone"], "size_m": [0.075, 0.155], "actions": ["appear", "fall", "move", "rotate", "shake", "vanish"], "style": "flat-2.5d", "version": 1, "license": "MIT (ShortPipeline)", "source": "engine/objects.js"},
+    {"id": "car", "category": "objects/vehicles", "tags": ["carro", "veículo", "automóvel", "trânsito"], "size_m": [4.2, 1.45], "actions": ["appear", "move", "shake", "vanish"], "style": "flat-2.5d", "version": 1, "license": "MIT (ShortPipeline)", "source": "engine/objects.js"},
+    {"id": "rock", "category": "objects/miscellaneous", "tags": ["pedra", "rocha", "meteorito"], "size_m": [0.6, 0.45], "actions": ["appear", "fall", "move", "rotate", "shake", "vanish"], "style": "flat-2.5d", "version": 1, "license": "MIT (ShortPipeline)", "source": "engine/objects.js"},
+    {"id": "coin", "category": "objects/miscellaneous", "tags": ["moeda", "dinheiro", "centavo"], "size_m": [0.03, 0.03], "actions": ["appear", "fall", "move", "rotate", "vanish"], "style": "flat-2.5d", "version": 1, "license": "MIT (ShortPipeline)", "source": "engine/objects.js"}
+  ],
+  "characters": {
+    "rig": "person", "pivots": ["neck", "shoulder", "elbow", "hip", "knee"],
+    "actions": ["walk", "run", "idle", "reaction", "look_up", "point", "talk", "shrug", "expression"],
+    "reaction_styles": ["surprised", "jump_back", "cover"],
+    "expressions": ["neutral", "smile", "surprised", "scared", "worried"],
+    "hair_styles": ["short", "long", "curly", "bun", "bald", "cap"],
+    "accessories": ["glasses", "cap", "headphones", "backpack"], "builds": ["slim", "regular", "broad"]
+  },
+  "environments": [
+    {"id": "city", "tags": ["rua", "prédios", "calçada", "cidade"], "params": ["time_of_day", "hero_building", "lamps", "trees", "foreground"]},
+    {"id": "nature", "tags": ["campo", "colinas", "árvores", "parque"], "params": ["time_of_day", "trees", "foreground"]},
+    {"id": "room", "tags": ["casa", "sala", "interior", "escritório"], "params": ["wall", "floor", "window_x"]},
+    {"id": "studio", "tags": ["fundo neutro", "explicação", "números"], "params": ["color"]}
+  ],
+  "camera": ["pan", "zoom", "focus", "follow", "shake", "roll"],
+  "overlays": ["speed", "distance", "timer", "counter", "callout", "highlight", "arrow", "title", "bars"],
+  "effects": ["impact", "dust", "smoke", "speed_lines", "light", "flash", "wind", "rain"],
+  "transitions": ["cut", "fade", "whip", "zoom", "slide"]
+}

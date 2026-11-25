@@ -24,5 +24,12 @@ jobs:
       - name: Sintaxe do painel
         run: for f in web/js/*.js; do node --check "$f"; done
 
+      - name: Engine de animação (Motion Canvas + Chromium headless)
+        working-directory: motion-canvas
+        run: |
+          npm ci
+          npm run build
+          npx playwright install --with-deps chromium
+
       - name: Testes
         run: uv run --group dev pytest -q

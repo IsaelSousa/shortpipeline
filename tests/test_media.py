@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import math
 import subprocess
 
 from conftest import needs_ffmpeg
@@ -90,3 +91,28 @@ def test_special_music_only_when_the_script_asks(tmp_path, monkeypatch):
 
     (folder / "normal.mp3").unlink()
     assert render.pick_music("canal") is None  # só a especial: sem música quando o roteiro não pede
+
+
+@needs_ffmpeg
+def test_ambience_beds_are_leveled_before_channel_volume(tmp_path):
+    """Regressão: ambientes baixos (ex.: o sintetizado, a -30 dB) sumiam debaixo da voz no vídeo."""
+    def tone(name, amplitude):
+        path = tmp_path / name
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"sine=f=200:d=10,volume={amplitude}",
+                        "-ac", "1", str(path)], check=True)
+        return path
+
+    def mean_db(path):
+        out = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(path), "-af", "volumedetect", "-f", "null",
+                              "-"], capture_output=True, text=True).stderr
+        return float(out.split("mean_volume: ")[1].split(" dB")[0])
+
+    levels = []
+    for name, amplitude in (("quiet.wav", 0.3), ("loud.wav", 4.0)):  # cerca de -31 dB e -9 dB
+        dest = tmp_path / f"mix-{name}"
+        bed = [{"file": tone(name, amplitude), "start": 0.0, "dur": 10.0, "volume": 0.16}]
+        asyncio.run(sound.build_mix([], bed, 10.0, dest))
+        levels.append(mean_db(dest))
+    expected = sound.BED_REF_DB + 20 * math.log10(0.16) - 3  # mono vira estéreo a -3 dB por canal
+    assert abs(levels[0] - levels[1]) < 1.0, levels  # o mesmo volume do canal soa igual com qualquer arquivo
+    assert all(abs(level - expected) < 1.5 for level in levels), (levels, expected)

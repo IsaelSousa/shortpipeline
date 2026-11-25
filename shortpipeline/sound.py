@@ -271,6 +271,53 @@ async def library_sound(name: str, style: str, providers_cfg: dict) -> Path:
         return dest
 
 
+# Cada ambiente chega com um volume diferente (ElevenLabs, pacotes, sintetizado). Antes de aplicar o volume do canal,
+# todos são levados ao mesmo nível médio, para "Volume do ambiente" soar igual com qualquer arquivo.
+BED_REF_DB = -14.0
+_mean_cache: dict[tuple[str, int], float | None] = {}
+
+
+async def mean_volume(path: Path) -> float | None:
+    """Volume médio (dB) do arquivo, medido uma vez por versão do arquivo."""
+    try:
+        key = (str(path), path.stat().st_mtime_ns)
+    except OSError:
+        return None
+    if key not in _mean_cache:
+        code, _, err = await run(["ffmpeg", "-hide_banner", "-nostats", "-t", "60", "-i", str(path),
+                                  "-af", "volumedetect", "-f", "null", "-"], timeout=60)
+        found = re.search(r"mean_volume: (-?[\d.]+) dB", err or "")
+        _mean_cache[key] = float(found.group(1)) if code == 0 and found else None
+    return _mean_cache[key]
+
+
+async def bed_gain(path: Path, volume: float) -> float:
+    """Fator final de um ambiente: nivelamento até BED_REF_DB (entre -12 e +18 dB) vezes o volume do canal."""
+    mean = await mean_volume(Path(path))
+    level = 0.0 if mean is None or mean < -80 else max(-12.0, min(18.0, BED_REF_DB - mean))
+    return volume * 10 ** (level / 20)
+
+
+# Sobe quando a mixagem muda: mixes salvos com versão antiga são refeitos ao abrir a timeline e no render.
+MIX_VERSION = 2
+
+
+async def remix_saved(snd: dict, total: float, dest: Path, ambience_volume: float | None = None) -> dict:
+    """Refaz a trilha de efeitos a partir dos sons salvos no job. Com ambience_volume, os ambientes do pipeline
+    (não os importados) passam a usar o volume atual do canal. Devolve o dict de som atualizado para salvar."""
+    beds = []
+    for b in snd.get("beds") or []:
+        if ambience_volume is not None and not b.get("imported"):
+            b = {**b, "volume": round(float(ambience_volume), 3)}
+        beds.append(b)
+    ev = [{**e, "file": Path(e["file"])} for e in snd.get("events") or [] if Path(e.get("file") or "").is_file()]
+    bd = [{**b, "file": Path(b["file"])} for b in beds if Path(b.get("file") or "").is_file()]
+    if not ev and not bd:
+        return {**snd, "beds": beds, "mix_version": MIX_VERSION}
+    await build_mix(ev, bd, total, dest)
+    return {**snd, "beds": beds, "mix": str(dest), "mix_version": MIX_VERSION}
+
+
 async def build_mix(events: list[dict], beds: list[dict], total: float, dest: Path) -> None:
     """Monta a trilha de efeitos (mesma duração do vídeo).
     events: [{"file", "at", "volume"}] sons pontuais; beds: [{"file", "start", "dur", "volume"}] ambientes em loop."""
@@ -291,7 +338,7 @@ async def build_mix(events: list[dict], beds: list[dict], total: float, dest: Pa
         filters.append(f"[{idx}:a]aresample=44100,aformat=channel_layouts=stereo,"
                        f"aloop=loop=-1:size=2147483647,atrim=0:{bed['dur']:.3f},"
                        f"asetpts=N/SR/TB,afade=t=in:d={fade:.2f},afade=t=out:st={bed['dur'] - fade:.3f}:d={fade:.2f},"
-                       f"volume={bed['volume']:.3f},adelay={ms}|{ms}[e{idx}]")
+                       f"volume={await bed_gain(bed['file'], float(bed['volume'])):.4f},adelay={ms}|{ms}[e{idx}]")
         labels.append(f"[e{idx}]")
         idx += 1
     if not labels:

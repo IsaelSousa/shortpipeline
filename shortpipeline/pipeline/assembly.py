@@ -138,7 +138,8 @@ async def stage_som(c: Ctx) -> None:
     ]
     c.save(sound={"mix": str(mix) if mix.exists() else None, "beats": beats,
                   "events": sorted(clean_events + imported_events, key=lambda e: e["at"]),
-                  "beds": sorted(clean_beds + imported_beds, key=lambda b: b["start"]), "style": style})
+                  "beds": sorted(clean_beds + imported_beds, key=lambda b: b["start"]), "style": style,
+                  "mix_version": sound.MIX_VERSION})
     c.log(f"Som: {len(events)} efeitos, {len(beds)} ambientes, {len(beats)} momentos de impacto"
           + (f" ({fallback_beds} ambientes locais)" if fallback_beds else "")
           + (f" ({from_library} da sua biblioteca)" if from_library else "")
@@ -157,6 +158,12 @@ async def stage_render(c: Ctx) -> None:
     ass = Path(caps) if caps and Path(caps).exists() else None
     cover_png = Path(cover["image"]) if cover and cov.get("in_video") and not c.is_long else None
     log = lambda m: (c.log(m), c.detail(m))
+    if c.kind == "animado":
+        from .animated import render_final
+        await render_final(c, log)
+        c.save(video=str(out))
+        c.log(f"Vídeo pronto: {out.stat().st_size / 1e6:.1f} MB")
+        return
     if c.kind == "corte":
         c.detail("renderizando")
         await render.render_clip(Path(c.data["reframed"]), ass, out, cover_png,
@@ -168,6 +175,13 @@ async def stage_render(c: Ctx) -> None:
         shots = [plan_shots(timings[i] if i < len(timings) else [], d, every)
                  for i, d in enumerate(c.data["durations"])] if every > 0 else None
         snd = c.data.get("sound") or {}
+        if (snd.get("events") or snd.get("beds")) and snd.get("mix_version") != sound.MIX_VERSION:
+            # mix feito com uma versão antiga da mixagem: refaz com os sons salvos e o volume de ambiente atual
+            c.detail("mixando efeitos")
+            snd = await sound.remix_saved(snd, sum(c.data["durations"]), c.dir / "sfx.wav",
+                                          cr.get("ambience_volume"))
+            c.save(sound=snd)
+            c.log("Trilha de efeitos refeita com a mixagem atual")
         sfx = Path(snd["mix"]) if snd.get("mix") and Path(snd["mix"]).exists() else None
         style = snd.get("style") or cr.get("sound_style")
         meter = None

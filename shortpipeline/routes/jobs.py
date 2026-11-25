@@ -70,7 +70,7 @@ def create_jobs(body: dict = Body(...)):
                             data={"input": inp, "clip_opts": clip_opts, "instructions": body.get("instructions") or ""})
         db.log(job["id"], "Fonte de cortes criada pelo painel")
         created.append(job["id"])
-    elif kind in ("short", "long"):
+    elif kind in ("short", "long", "animado"):
         count = max(1, min(20, int(body.get("count") or 1)))
         topic = (body.get("topic") or "").strip() or None
         data = {"long_minutes": float(body["minutes"])} if kind == "long" and body.get("minutes") else {}

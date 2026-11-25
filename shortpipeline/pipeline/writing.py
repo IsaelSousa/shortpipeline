@@ -271,8 +271,10 @@ def creative_hint(c: Ctx, fmt: str) -> str:
         '"audio": "o que o público ouve além da voz, incluindo silêncio quando fizer sentido", '
         '"reveal": "o que esta cena acrescenta à história ou à explicação"}. '
         'Use frases curtas no idioma do vídeo. Cada cena deve acrescentar uma pista, evidência ou consequência.',
-        "- Escreva o image_prompt para mostrar a ação, o detalhe ou a evidência indicada em direction.visual. "
-        "A imagem deve complementar a narração. Evite ilustrações genéricas e cenas que repetem a fala.",
+        ("- Escreva em \"visual\" a ação, o detalhe ou a evidência indicada em direction.visual: a animação mostra "
+         "isso enquanto a narração fala." if c.kind == "animado" else
+         "- Escreva o image_prompt para mostrar a ação, o detalhe ou a evidência indicada em direction.visual. "
+         "A imagem deve complementar a narração. Evite ilustrações genéricas e cenas que repetem a fala."),
         "- Se a pauta for factual, distinga evidência, interpretação e incerteza. "
         "Use as fontes disponíveis no contexto e nunca invente citações, números ou material de arquivo. "
         "Descreva imagens geradas como ilustrações quando puderem ser confundidas com evidência real.",
@@ -326,7 +328,7 @@ def creative_hint(c: Ctx, fmt: str) -> str:
     if rating_on(c):
         lines.append('- Inclua no JSON "rating": inteiro de 0 a 10, uma nota honesta para '
                      f"{cr.get('rating_criteria') or 'o tema do vídeo'} (ela aparece num selo no fim do vídeo).")
-    if cr.get("characters", True):
+    if cr.get("characters", True) and c.kind != "animado":
         lines.append(
             '- Inclua no JSON "characters": [{"name": "nome curto", "look": "aparência FIXA EM INGLÊS: idade, gênero, '
             'rosto, cabelo, roupa"}] com os personagens que aparecem nas imagens (no máximo 3; [] se não houver), '
@@ -338,7 +340,13 @@ def creative_hint(c: Ctx, fmt: str) -> str:
 
 async def stage_roteiro(c: Ctx) -> None:
     template = c.ch["prompts"].get("long_script") if c.is_long else None
+    if c.kind == "animado":
+        from ..motion.prompts import ANIMATED_SCRIPT_PROMPT
+        template = c.ch["prompts"].get("animated_script") or ANIMATED_SCRIPT_PROMPT
     prompt = c.fmt(template or c.ch["prompts"]["script"])
+    if c.kind == "animado":
+        from .animated import research_brief
+        prompt += research_brief(c)
     if "cover_text" not in prompt:
         prompt += COVER_FIELDS_HINT
     fmt = c.data.get("format") or pick_format(c)

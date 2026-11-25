@@ -362,6 +362,37 @@ async def motion_clip(image: Path, duration: float, dest: Path, frame: tuple[int
                       "-preset", "veryfast", "-crf", "18", "-vf", "setsar=1,format=yuv420p", "-an", str(dest)])
 
 
+def audio_filters(f: list[str], na: int, mi: int | None, si: int | None, video: dict, beats: list[float],
+                  total: float) -> None:
+    """Acrescenta ao filtro a mixagem final em [a]: voz + música (abaixa quando a voz fala e some antes dos sustos)
+    + efeitos, com o mixer de volume individual (audio_levels)."""
+    levels = video.get("audio_levels") or {}
+    voice_mul = float(levels.get("voice", 1.0))
+    bgm_mul = float(levels.get("bgm", 1.0))
+    sfx_mul = float(levels.get("sfx", 1.0))
+
+    mix = []
+    if mi is not None:
+        f.append(f"[{na}:a]aresample=44100,aformat=channel_layouts=stereo,volume={voice_mul:.2f},asplit=2[nv][nk]")
+        vol = float(video.get("music_volume") or 0.1) * 1.8 * bgm_mul
+        dips = "".join(f",volume=0:enable='between(t,{b - 0.7:.2f},{b + 0.2:.2f})'" for b in beats)
+        f.append(f"[{mi}:a]aresample=44100,aformat=channel_layouts=stereo,volume={vol:.3f}{dips},"
+                 f"afade=t=out:st={max(total - 1.5, 0):.2f}:d=1.5[mraw]")
+        f.append("[mraw][nk]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=400[m]")
+        mix += ["[nv]", "[m]"]
+    else:
+        f.append(f"[{na}:a]aresample=44100,aformat=channel_layouts=stereo,volume={voice_mul:.2f}[nv]")
+        mix.append("[nv]")
+    if si is not None:
+        f.append(f"[{si}:a]aresample=44100,aformat=channel_layouts=stereo,volume={sfx_mul:.2f}[sx]")
+        mix.append("[sx]")
+    if len(mix) > 1:
+        f.append(f"{''.join(mix)}amix=inputs={len(mix)}:duration=first:dropout_transition=0:normalize=0,"
+                 "alimiter=limit=0.95[a]")
+    else:
+        f.append("[nv]anull[a]")
+
+
 async def render_video(job_dir: Path, images: list[Path], durations: list[float], narration: Path,
                        ass: Path | None, video: dict, channel_id: str, dest: Path, log=None,
                        cover: Path | None = None, cover_seconds: float = 0.3,
@@ -459,39 +490,35 @@ async def render_video(job_dir: Path, images: list[Path], durations: list[float]
     else:
         f.append(f"{last}{chain},format=yuv420p[v]")
 
-    # áudio: voz + música (abaixa quando a voz fala e some antes dos sustos) + efeitos
-    # com suporte a mixer de volume individual (audio_levels)
-    levels = video.get("audio_levels") or {}
-    voice_mul = float(levels.get("voice", 1.0))
-    bgm_mul = float(levels.get("bgm", 1.0))
-    sfx_mul = float(levels.get("sfx", 1.0))
-
-    mix = []
-    if mi is not None:
-        f.append(f"[{na}:a]aresample=44100,aformat=channel_layouts=stereo,volume={voice_mul:.2f},asplit=2[nv][nk]")
-        vol = float(video.get("music_volume") or 0.1) * 1.8 * bgm_mul
-        dips = "".join(f",volume=0:enable='between(t,{b - 0.7:.2f},{b + 0.2:.2f})'" for b in beats)
-        f.append(f"[{mi}:a]aresample=44100,aformat=channel_layouts=stereo,volume={vol:.3f}{dips},"
-                 f"afade=t=out:st={max(total - 1.5, 0):.2f}:d=1.5[mraw]")
-        f.append("[mraw][nk]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=400[m]")
-        mix += ["[nv]", "[m]"]
-    else:
-        f.append(f"[{na}:a]aresample=44100,aformat=channel_layouts=stereo,volume={voice_mul:.2f}[nv]")
-        mix.append("[nv]")
-    if si is not None:
-        f.append(f"[{si}:a]aresample=44100,aformat=channel_layouts=stereo,volume={sfx_mul:.2f}[sx]")
-        mix.append("[sx]")
-    if len(mix) > 1:
-        f.append(f"{''.join(mix)}amix=inputs={len(mix)}:duration=first:dropout_transition=0:normalize=0,"
-                 "alimiter=limit=0.95[a]")
-    else:
-        f.append("[nv]anull[a]")
+    audio_filters(f, na, mi, si, video, beats, total)
     await ffmpeg([*inputs, "-filter_complex", ";".join(f), "-map", "[v]", "-map", "[a]",
                   "-t", f"{total:.3f}", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
                   "-maxrate", "8M", "-bufsize", "16M", "-r", str(FPS), "-c:a", "aac", "-b:a", "192k", "-ac", "2",
                   "-movflags", "+faststart", str(dest)],
                  timeout=max(1800, int(total * 8)))
 
+
+
+async def mux_animation(silent: Path, narration: Path, video: dict, channel_id: str, dest: Path, *, total: float,
+                        sfx: Path | None = None, beats: list[float] | None = None,
+                        music: Path | None | str = "auto") -> Path | None:
+    """Vídeo animado (sem som) + a mesma mixagem do short: voz, música com ducking e trilha de efeitos.
+    Devolve a música usada."""
+    inputs = ["-i", str(silent), "-i", str(narration)]
+    nxt, mi, si = 2, None, None
+    if music == "auto":
+        music = pick_music(channel_id)
+    if music:
+        mi, nxt = nxt, nxt + 1
+        inputs += ["-stream_loop", "-1", "-i", str(music)]
+    if sfx and sfx.exists():
+        si, nxt = nxt, nxt + 1
+        inputs += ["-i", str(sfx)]
+    f: list[str] = []
+    audio_filters(f, 1, mi, si, video, beats or [], total)
+    await ffmpeg([*inputs, "-filter_complex", ";".join(f), "-map", "0:v", "-map", "[a]", "-t", f"{total:.3f}",
+                  "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-movflags", "+faststart", str(dest)])
+    return music if isinstance(music, Path) else None
 
 METER = {"x": 110, "y": 300, "w": 860, "h": 230, "track_x": 160, "track_y": 450, "track_w": 760, "track_h": 44,
          "panel": "0x0B0F19", "track_bg": "0x32363E"}  # trilha = branco 16% sobre o painel, já misturado

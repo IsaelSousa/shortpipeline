@@ -63,10 +63,12 @@ async function pageJob(id) {
       transcricao: `${icon("wave", "sm")}Transcrição`,
       corte: `${icon("scissors", "sm")}Corte`,
       log: `${icon("term", "sm")}Log<span class="n" id="logCount">${logs.length}</span>`,
+      animacao: `${icon("wand", "sm")}Animação`,
     };
     const order = {
       fonte: ["cortes", "transcricao", "log"],
       corte: hasTimeline ? ["timeline", "corte", "capa", "log"] : ["corte", "capa", "log"],
+      animado: ["animacao", "roteiro", "capa", "log"],
     }[kind] || (hasTimeline ? ["timeline", "roteiro", "capa", "cenas", "log"] : ["roteiro", "capa", "cenas", "log"]);
     return order.map((k) => [k, T[k]]);
   }
@@ -79,15 +81,18 @@ async function pageJob(id) {
     const wide = isLong || isFonte;
     const stageReview = job.status === "waiting_approval" && job.stages[job.stage]?.status === "review_pending";
     const stageReviewTab = {roteiro:"roteiro", imagens:"cenas", capa:"capa", transcricao:"transcricao", recorte:"corte",
-      narracao:"timeline", som:"timeline", legendas:"timeline", render:"timeline"}[job.stage];
+      narracao:"timeline", som:"timeline", legendas:"timeline", render:"timeline", storyboard:"animacao",
+      preview:"animacao"}[job.stage];
     const videoPath = isFonte ? relPath(job, d.source?.path)
-      : stageReview && job.stage === "recorte" && d.reframed ? "reframed.mp4" : (d.video ? "final.mp4" : null);
+      : stageReview && job.stage === "recorte" && d.reframed ? "reframed.mp4"
+      : (d.video ? "final.mp4" : kind === "animado" && d.preview ? "preview.mp4" : null);
     const video = videoPath ? fileUrl(job, videoPath) : null;
     const firstPending = order.find((s) => job.stages[s].status !== "done") || order[0];
     const title = script.title || d.source?.title || job.topic || "Novo";
     const tabs = tabsFor(kind);
     if (!tab || !tabs.some(([k]) => k === tab)) {
-      const suggested = stageReview ? stageReviewTab : job.status === "waiting_approval" && job.stage === "render" ? "timeline" : null;
+      const suggested = stageReview ? stageReviewTab : job.status === "waiting_approval" && job.stage === "render"
+        ? (kind === "animado" ? "animacao" : "timeline") : null;
       tab = tabs.some(([key]) => key === suggested) ? suggested : tabs[0][0];
     }
     const facts = isFonte ? [
@@ -219,6 +224,10 @@ async function pageJob(id) {
     const d = job.data, script = d.script || {};
     if (tab === "timeline") {
       renderTimeline(body, job, load);
+      return;
+    }
+    if (tab === "animacao") {
+      renderAnimation(body, job, load);
       return;
     }
     if (tab === "log") {

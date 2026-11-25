@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "title": "E se um ar-condicionado caísse de um prédio enquanto você anda na rua?",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "upm": 200,
+  "theme": {"accent": "#F97316", "accent2": "#FDE047", "locale": "pt-BR"},
+  "facts": [
+    {"claim": "Queda de 28,8 m (9 andares de 3,2 m) dura cerca de 2,4 s", "kind": "calculation",
+     "formula": "t = sqrt(2h/g)", "assumptions": "g = 9,81 m/s², sem resistência do ar", "value": 2.42},
+    {"claim": "Chega ao chão a cerca de 86 km/h", "kind": "calculation", "formula": "v = g·t",
+     "assumptions": "sem resistência do ar", "value": 85.6},
+    {"claim": "Um aparelho de janela pesa por volta de 30 kg", "kind": "estimate",
+     "assumptions": "modelos de 7.000 a 12.000 BTU ficam entre 20 e 40 kg", "value": 30}
+  ],
+  "characters": [
+    {"id": "walker", "look": {"skin": "#C68B67", "hair": "#2B1D14", "hair_style": "curly", "shirt": "#10B981",
+                              "pants": "#334155", "shoes": "#F8FAFC", "accessories": ["headphones", "backpack"]}}
+  ],
+  "captions": {"enabled": true, "max_words": 3, "emphasis": ["ar-condicionado", "segundos", "km/h"], "words": []},
+  "scenes": [
+    {
+      "id": "s1_gancho", "start": 0, "end": 4.2, "enter": {"type": "cut"},
+      "environment": {"type": "city", "time_of_day": "day", "hero_building": {"x": 0, "floors": 10}, "foreground": true},
+      "characters": [{"ref": "walker", "x": -3.5, "actions": [{"type": "walk", "start": 0, "end": 4.2, "to_x": 1.6}]}],
+      "objects": [
+        {"id": "ac", "asset": "air_conditioner", "x": 0.2, "height": 28.8, "pivot": "top",
+         "actions": [{"type": "wobble", "start": 0, "end": 4.2, "amplitude": 0.05, "period": 1.1}]}
+      ],
+      "camera": {"start": {"x": -2.5, "height": 1.6, "zoom": 1.15},
+                 "moves": [{"type": "follow", "target": "walker", "start": 0, "end": 4.2, "frame_y": 0.62, "zoom": 1.15}]},
+      "overlays": [{"type": "title", "text": "E se um [ar-condicionado] caísse agora?", "start": 0.2, "end": 4.0}]
+    },
+    {
+      "id": "s2_aparelho", "start": 4.2, "end": 8.6, "enter": {"type": "whip", "dur": 0.3},
+      "environment": {"type": "city", "time_of_day": "day", "hero_building": {"x": 0, "floors": 10}},
+      "characters": [{"ref": "walker", "x": 1.6, "actions": [{"type": "walk", "start": 0, "end": 4.4, "to_x": 4.0}]}],
+      "objects": [
+        {"id": "bracket", "asset": "bracket", "x": 0.2, "height": 28.75, "shadow": false},
+        {"id": "ac", "asset": "air_conditioner", "x": 0.2, "height": 28.8, "pivot": "top",
+         "actions": [{"type": "wobble", "start": 0, "end": 4.4, "amplitude": 0.07, "period": 0.8},
+                     {"type": "shake", "start": 3.4, "end": 4.4, "intensity": 0.05}]}
+      ],
+      "camera": {"start": {"x": 0.2, "height": 3, "zoom": 1.0},
+                 "moves": [{"type": "pan", "start": 0, "end": 2.2, "x": 0.2, "height": 28.2, "zoom": 1.6, "ease": "inOut"}]},
+      "overlays": [{"type": "callout", "target": "ac", "text": "≈ 30 kg presos por dois parafusos", "start": 2.0, "end": 4.4}]
+    },
+    {
+      "id": "s3_queda", "start": 8.6, "end": 12.4, "enter": {"type": "cut"},
+      "environment": {"type": "city", "time_of_day": "day", "hero_building": {"x": 0, "floors": 10}},
+      "characters": [{"ref": "walker", "x": 1.2, "actions": [{"type": "walk", "start": 0, "end": 3.8, "to_x": 2.4}]}],
+      "objects": [
+        {"id": "ac", "asset": "air_conditioner", "x": 0.2, "height": 28.8, "important": true,
+         "actions": [{"type": "fall", "start": 0.4, "bounce": 0.12, "spin": 0.5}]}
+      ],
+      "camera": {"start": {"x": 0.2, "height": 28.0, "zoom": 1.25},
+                 "moves": [{"type": "follow", "target": "ac", "start": 0.3, "end": 2.8, "frame_y": 0.4, "zoom": 1.0}]},
+      "overlays": [
+        {"type": "speed", "target": "ac", "unit": "km/h", "start": 0.5, "end": 2.85, "label": "velocidade"},
+        {"type": "distance", "target": "ac", "start": 0.5, "end": 2.85},
+        {"type": "timer", "x": 0.07, "y": 0.17, "start": 0.4, "end": 3.6, "stop_at": 2.82, "since": 0.4}
+      ],
+      "effects": [{"type": "speed_lines", "target": "ac", "start": 1.2, "end": 2.8}]
+    },
+    {
+      "id": "s4_impacto", "start": 12.4, "end": 16.0, "enter": {"type": "cut"},
+      "time_warp": [{"start": 0, "end": 0.8, "rate": 0.35}],
+      "environment": {"type": "city", "time_of_day": "day", "hero_building": {"x": 0, "floors": 10}, "foreground": true},
+      "characters": [{"ref": "walker", "x": 2.4,
+                      "actions": [{"type": "walk", "start": 0, "end": 0.35, "to_x": 2.55},
+                                  {"type": "reaction", "style": "jump_back", "start": 0.35, "end": 3.6, "facing": -1}]}],
+      "objects": [
+        {"id": "ac", "asset": "air_conditioner", "x": 0.2, "height": 2.2,
+         "actions": [{"type": "fall", "start": 0, "bounce": 0.15, "spin": 0.4}]}
+      ],
+      "camera": {"start": {"x": 1.3, "height": 1.3, "zoom": 1.5},
+                 "moves": [{"type": "shake", "start": 0.62, "end": 1.3, "intensity": 26},
+                           {"type": "zoom", "start": 1.2, "end": 3.0, "zoom": 1.2}]},
+      "effects": [{"type": "impact", "target": "ac", "at": 0.63, "size": 1.2},
+                  {"type": "dust", "target": "ac", "at": 0.63, "size": 1.0},
+                  {"type": "flash", "at": 0.63}],
+      "overlays": [{"type": "callout", "text": "Você estaria a 2 metros", "x": 0.5, "y": 0.2, "start": 1.6, "end": 3.6}]
+    },
+    {
+      "id": "s5_numeros", "start": 16.0, "end": 22.0, "enter": {"type": "zoom", "dur": 0.4},
+      "environment": {"type": "studio", "color": "#1E293B"},
+      "objects": [{"id": "ac", "asset": "air_conditioner", "x": 0, "height": 0, "scale": 1.6,
+                   "actions": [{"type": "appear", "start": 0, "dur": 0.5, "style": "pop"}]}],
+      "camera": {"start": {"x": 0, "height": 2.2, "zoom": 1.0}},
+      "overlays": [
+        {"type": "counter", "from": 0, "to": 86, "suffix": " km/h", "start": 0.3, "dur": 1.4, "y": 0.2, "label": "ao tocar o chão"},
+        {"type": "bars", "start": 2.2, "end": 6.0, "y": 0.34, "unit": "km/h",
+         "items": [{"label": "Ar-condicionado", "value": 86}, {"label": "Carro na cidade", "value": 50, "color": "#38BDF8"}]}
+      ]
+    },
+    {
+      "id": "s6_seguranca", "start": 22.0, "end": 27.0, "enter": {"type": "fade", "dur": 0.3},
+      "environment": {"type": "city", "time_of_day": "sunset", "hero_building": {"x": 0, "floors": 10}},
+      "characters": [{"ref": "walker", "x": -1.2,
+                      "actions": [{"type": "look_up", "start": 0.3, "end": 2.2},
+                                  {"type": "walk", "start": 2.2, "end": 5.0, "to_x": 3.2}]}],
+      "objects": [{"id": "ac2", "asset": "air_conditioner", "x": 0.2, "height": 9.6}, {"id": "br2", "asset": "bracket", "x": 0.2, "height": 9.55, "shadow": false}],
+      "camera": {"start": {"x": -0.4, "height": 3.4, "zoom": 1.0},
+                 "moves": [{"type": "pan", "start": 0.3, "end": 2.0, "height": 5.2, "zoom": 0.62}]},
+      "overlays": [
+        {"type": "highlight", "target": "ac2", "start": 1.0, "end": 3.0},
+        {"type": "callout", "target": "ac2", "text": "Suporte com ferrugem? Avise o síndico", "start": 1.2, "end": 4.8}
+      ]
+    }
+  ]
+}
