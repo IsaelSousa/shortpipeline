@@ -81,8 +81,11 @@ def _packs(style: str | None, user_only: bool = False) -> list[tuple[Path, dict]
     roots = [USER_PACKS] if user_only else [USER_PACKS, PACKS]
     out = []
     for root in roots:
-        for pack in sorted(root.iterdir()) if root.is_dir() else ():
-            if not pack.is_dir():
+        # os pacotes que você montou vêm antes dos gerados pelo shortpipeline-sounds (ganham no empate)
+        packs = sorted(root.iterdir(), key=lambda p: (_pack_meta(p).get("source") == "shortpipeline-sounds", p.name)) \
+            if root.is_dir() else ()
+        for pack in packs:
+            if not pack.is_dir() or pack.name.startswith("."):  # .downloads etc. não são pacotes
                 continue
             meta = _pack_meta(pack)
             styles = meta.get("styles")
@@ -110,11 +113,14 @@ def packed_sound(name: str, style: str | None = None, user_only: bool = False) -
 
 
 def match_sound(description: str, style: str | None, prefix: str = "") -> Path | None:
-    """Procura na sua biblioteca um som cuja palavra-chave aparece na descrição (ex.: "a woman screaming" → scream).
-    Com prefix="ambience", só olha ambientes."""
+    """Procura na sua biblioteca o som que mais combina com a descrição (ex.: "a woman screaming" → scream).
+    O primeiro termo do nome do som precisa aparecer (glass-break exige "glass" ou um sinônimo); entre os que
+    passam, ganha o que bate com mais termos, e no empate o pacote que vem antes. Com prefix="ambience", só olha
+    ambientes."""
     words = set(_norm_text(description))
     if not words:
         return None
+    best: tuple[int, list[Path]] | None = None
     for pack, meta in _packs(style, user_only=True):
         extra = {k: [w.lower() for w in v] for k, v in (meta.get("tags") or {}).items() if isinstance(v, list)}
         by_base: dict[str, list[Path]] = {}
@@ -125,13 +131,18 @@ def match_sound(description: str, style: str | None, prefix: str = "") -> Path |
                 continue
             if not prefix and base.startswith("ambience"):
                 continue
-            keys = {t for t in _norm_text(base) if t != "ambience"}
-            tags = set(extra.get(base, []))
-            for k in keys:
-                tags |= set(SYNONYMS.get(k, [k]))
-            if words & {_norm_text(t)[0] for t in tags if _norm_text(t)}:
-                return random.choice(files)
-    return None
+            keys = [t for t in _norm_text(base) if t != "ambience"]
+
+            def hit(k: str) -> bool:
+                return bool(words & {_norm_text(t)[0] for t in SYNONYMS.get(k, [k]) if _norm_text(t)})
+
+            tag_hit = len(words & {_norm_text(t)[0] for t in extra.get(base, []) if _norm_text(t)})
+            if not tag_hit and not (keys and hit(keys[0])):
+                continue
+            score = sum(hit(k) for k in keys) + tag_hit
+            if best is None or score > best[0]:
+                best = (score, files)
+    return random.choice(best[1]) if best else None
 
 
 def library(style: str | None) -> list[dict]:

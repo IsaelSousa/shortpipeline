@@ -148,6 +148,14 @@ Uma música que só faz sentido em certas histórias (ex.: um parabéns para fes
 
 A IA do roteiro recebe essas descrições e escolhe a música só quando a história combina. A escolha aparece na aba Roteiro e no campo `"music"` do roteiro, que você pode editar. As outras músicas da pasta continuam sendo sorteadas nos demais vídeos; se não houver nenhuma, o vídeo fica sem música.
 
+**Biblioteca grátis pronta**: um comando baixa e organiza mais de mil efeitos e ambientes CC0 (domínio público, uso comercial livre) da [Kenney](https://kenney.nl) e de autores do [OpenGameArt](https://opengameart.org):
+
+```bash
+uv run shortpipeline-sounds          # ~1.100 sons em data/sound-packs/cc0-* (25 MB); --list mostra as fontes
+```
+
+Ficam em pacotes por tema (impactos, cotidiano, interface, sci-fi, criaturas, vinhetas, ambientes e ambientes sombrios), com o volume nivelado, palavras-chave em português e inglês para a busca e o crédito de cada arquivo em `CREDITS.md`. Monstros e ambientes sombrios só entram em canais de terror (e neutro); sons de interface só em neutro e tech. Os pacotes que você mesmo montar têm prioridade sobre esses.
+
 **Efeitos e ambientes**: crie uma pasta em `data/sound-packs/` (também fora do git, para sons que você não pode redistribuir, como os do Pixabay) e nomeie os arquivos pelo tipo de som:
 
 ```
@@ -264,6 +272,6 @@ Ao distribuir cópias ou partes substanciais do material MIT, inclua o aviso de 
 ## Créditos
 
 - [Motion Canvas](https://github.com/motion-canvas/motion-canvas), sob a licença MIT, para os templates animados.
-- Efeitos e ambientes offline de [Kenney](https://kenney.nl) e de autores do [OpenGameArt](https://opengameart.org), sob CC0. Veja a [lista de arquivos, a licença e como adicionar pacotes](assets/sound-packs/README.md).
+- Efeitos e ambientes offline de [Kenney](https://kenney.nl) e de autores do [OpenGameArt](https://opengameart.org), sob CC0 (os incluídos e os baixados pelo `shortpipeline-sounds`, com o crédito de cada arquivo no `CREDITS.md` do pacote). Veja a [lista de arquivos, a licença e como adicionar pacotes](assets/sound-packs/README.md).
 - Fontes [Anton](https://fonts.google.com/specimen/Anton), [Creepster](https://fonts.google.com/specimen/Creepster), [Montserrat](https://fonts.google.com/specimen/Montserrat) e [Inter](https://fonts.google.com/specimen/Inter), sob a [SIL Open Font License 1.1](https://openfontlicense.org) (texto de cada uma em `assets/fonts/` e `web/fonts/`).
 - Detector de rostos [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet) do OpenCV Zoo, sob a licença MIT (`assets/models/LICENSE-YuNet.txt`).

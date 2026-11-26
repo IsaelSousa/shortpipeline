@@ -17,20 +17,47 @@ export const ASSETS = {
   air_conditioner: {
     size: [0.8, 0.55], draw(ctx, w, h, o) {
       box3d(ctx, w, h, w * 0.12, o.color || '#EEF2F6');
-      ctx.fillStyle = '#9CA3AF';
-      ctx.beginPath(); ctx.arc(-w * 0.12, 0, h * 0.34, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#6B7280'; ctx.lineWidth = w * 0.012;
-      for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.moveTo(-w * 0.12 + i * h * 0.09, -h * 0.3); ctx.lineTo(-w * 0.12 + i * h * 0.09, h * 0.3); ctx.stroke(); }
-      ctx.fillStyle = '#D1D5DB';
+      const face = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
+      face.addColorStop(0, 'rgba(255,255,255,0.25)');
+      face.addColorStop(1, 'rgba(40,56,73,0.24)');
+      ctx.fillStyle = face;
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      ctx.save();
+      ctx.translate(-w * 0.15, 0);
+      ctx.fillStyle = '#536271';
+      ctx.beginPath(); ctx.arc(0, 0, h * 0.38, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#253542';
+      ctx.beginPath(); ctx.arc(0, 0, h * 0.32, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#617485';
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        ctx.ellipse(h * 0.15, -h * 0.07, h * 0.15, h * 0.07, -0.45, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.rotate(Math.PI * 2 / 5);
+      }
+      ctx.strokeStyle = '#98A9B6';
+      ctx.lineWidth = w * 0.007;
+      for (const radius of [0.09, 0.16, 0.23, 0.30]) {
+        ctx.beginPath(); ctx.arc(0, 0, h * radius, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+      ctx.fillStyle = '#A5B1BC';
       for (let i = 0; i < 6; i++) ctx.fillRect(w * 0.2, -h * 0.32 + i * h * 0.11, w * 0.24, h * 0.05);
       ctx.fillStyle = '#4B5563'; ctx.fillRect(-w / 2, h / 2 - h * 0.06, w, h * 0.06);
     },
   },
   bracket: {
     size: [0.9, 0.18], draw(ctx, w, h) {
-      ctx.fillStyle = '#6B7280'; ctx.fillRect(-w / 2, -h / 2, w, h * 0.4);
+      const steel = ctx.createLinearGradient(0, -h / 2, 0, h * 1.7);
+      steel.addColorStop(0, '#8793A1');
+      steel.addColorStop(1, '#374451');
+      ctx.fillStyle = steel; ctx.fillRect(-w / 2, -h / 2, w, h * 0.4);
       ctx.beginPath(); ctx.moveTo(-w / 2, -h / 2); ctx.lineTo(-w / 2, h * 2); ctx.lineTo(-w / 2 + h, -h / 2); ctx.fill();
       ctx.beginPath(); ctx.moveTo(w / 2, -h / 2); ctx.lineTo(w / 2, h * 2); ctx.lineTo(w / 2 - h, -h / 2); ctx.fill();
+      ctx.fillStyle = '#CCD2D8';
+      for (const x of [-w * 0.46, w * 0.46]) {
+        ctx.beginPath(); ctx.arc(x, h * 0.1, h * 0.11, 0, Math.PI * 2); ctx.fill();
+      }
     },
   },
   crate: {

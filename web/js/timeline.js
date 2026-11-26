@@ -1124,10 +1124,17 @@ async function renderTimeline(body, job, load, initialScene = timelineScene) {
     const style = job.data?.sound?.style || "";
     api(`/api/sound-library?style=${encodeURIComponent(style)}`).then(({ sounds }) => {
       if (!sounds.length || !libBox.isConnected) return;
-      libBox.innerHTML = `<span class="small muted">Sua biblioteca</span><div class="row wrap" style="gap:8px">${sounds.map((x) =>
-        `<button class="btn sm" data-sfx="lib:${esc(x.name)}" title="${x.variants > 1 ? `${x.variants} variações, uma é sorteada` : "1 arquivo"}">${icon("volume", "sm")}${esc(x.name)}${x.variants > 1 ? ` <span class="faint">×${x.variants}</span>` : ""}</button>`).join("")}</div>`;
+      libBox.innerHTML = `<div class="row" style="gap:8px;align-items:center"><span class="small muted grow">Sua biblioteca · ${sounds.length} tipos</span>
+        ${sounds.length > 12 ? `<input id="tlLibFilter" placeholder="Buscar som (ex.: door, glass)" style="max-width:220px">` : ""}</div>
+        <div class="row wrap" id="tlLibList" style="gap:8px;max-height:150px;overflow-y:auto">${sounds.map((x) =>
+        `<button class="btn sm" data-sfx="lib:${esc(x.name)}" data-name="${esc(x.name)}" title="${x.variants > 1 ? `${x.variants} variações, uma é sorteada` : "1 arquivo"}">${icon("volume", "sm")}${esc(x.name)}${x.variants > 1 ? ` <span class="faint">×${x.variants}</span>` : ""}</button>`).join("")}</div>`;
       libBox.hidden = false;
       bindSfxButtons(libBox);
+      const filter = $("#tlLibFilter", libBox);
+      if (filter) filter.oninput = () => {
+        const q = filter.value.trim().toLowerCase();
+        $$("#tlLibList [data-name]", libBox).forEach((b) => { b.hidden = q && !b.dataset.name.includes(q); });
+      };
     }).catch(() => {});
   }
 

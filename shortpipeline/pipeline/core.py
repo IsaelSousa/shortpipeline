@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import math
 import time
+from pathlib import Path
 
 from .. import config, db, learn
 from ..providers import ProviderError, llm
@@ -87,7 +88,7 @@ class Ctx:
         values.update(extra)
         return template.format(**values)
 
-    async def text(self, stage_key: str, prompt: str) -> str:
+    async def text(self, stage_key: str, prompt: str, *, image: Path | None = None) -> str:
         """Chama o modelo da etapa; se falhar, tenta o fallback configurado."""
         m = self.ch["models"][stage_key]
         attempts = [(m["provider"], m.get("model") or "")]
@@ -99,7 +100,9 @@ class Ctx:
             self.log(f"Chamando {prov}{' / ' + model if model else ''}")
             try:
                 t0 = time.time()
-                out = await llm.generate(prov, model, prompt, timeout=timeout, providers_cfg=self.cfg["providers"])
+                options = {"image": image} if image is not None and prov == "codex" else {}
+                out = await llm.generate(prov, model, prompt, timeout=timeout, providers_cfg=self.cfg["providers"],
+                                         **options)
                 self.log(f"{prov} respondeu em {time.time() - t0:.0f}s")
                 return out
             except ProviderError as e:

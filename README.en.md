@@ -150,6 +150,14 @@ A track that only fits some stories (e.g. a birthday tune) goes in a `music.json
 
 The script AI gets these descriptions and only picks the track when the story fits. The choice shows on the Roteiro (Script) tab and in the script's `"music"` field, which you can edit. The other tracks in the folder are still picked at random for the other videos; if there are none, the video has no music.
 
+**Ready-made free library**: one command downloads and organizes over a thousand CC0 effects and ambience loops (public domain, free for commercial use) from [Kenney](https://kenney.nl) and [OpenGameArt](https://opengameart.org) authors:
+
+```bash
+uv run shortpipeline-sounds          # ~1,100 sounds in data/sound-packs/cc0-* (25 MB); --list shows the sources
+```
+
+They're grouped by theme (impacts, everyday, interface, sci-fi, creatures, stingers, ambience and dark ambience), loudness-leveled, tagged with Portuguese and English keywords for matching, and credited file by file in `CREDITS.md`. Monsters and dark ambience only apply to horror (and neutral) channels; interface sounds only to neutral and tech. Packs you build yourself take priority over these.
+
 **Effects and ambience**: create a folder in `data/sound-packs/` (also ignored by git, for sounds you can't redistribute, such as Pixabay's) and name the files after the kind of sound:
 
 ```

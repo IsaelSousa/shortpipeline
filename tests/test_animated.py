@@ -97,14 +97,15 @@ def _storyboard(n):
         {"id": "s2", "start": 1, "end": 2, "environment": {"type": "room"},
          "objects": [{"id": "box", "asset": "crate", "x": 0.6, "height": 3,
                       "actions": [{"type": "fall", "at_word": "cai"}]}],
-         "camera": {"moves": [{"type": "follow", "target": "box", "start": 0}]},
+         "camera": {"moves": [{"type": "cut", "target": "box", "start": 0, "zoom": 2},
+                              {"type": "follow", "target": "box", "start": 0}]},
          "overlays": [{"type": "speed", "target": "box", "start": 0}, {"type": "distance", "target": "box", "start": 0}]},
         {"id": "s3", "start": 2, "end": 3, "environment": {"type": "studio"},
          "overlays": [{"type": "counter", "from": 0, "to": 28, "suffix": " km/h", "start": 0}],
          "camera": {"moves": [{"type": "zoom", "start": 0, "zoom": 1.2}]}},
     ]
     return {"schema_version": 1, "characters": [{"id": "ana", "look": {"hair_style": "bun"}}],
-            "captions": {"emphasis": ["metros"]}, "cover_time": 0.5, "scenes": scenes[:n]}
+            "captions": {"emphasis": ["metros"], "fixed_position": True}, "cover_time": 0.5, "scenes": scenes[:n]}
 
 
 @needs_ffmpeg
@@ -112,7 +113,7 @@ def _storyboard(n):
 def test_animated_short_end_to_end(channel, monkeypatch):
     calls = []
 
-    async def text(self, stage_key, prompt):
+    async def text(self, stage_key, prompt, *, image=None):
         calls.append(stage_key)
         if "pesquisador" in prompt:
             return json.dumps({"question": "Quão rápido cai?", "facts": [
@@ -121,6 +122,8 @@ def test_animated_short_end_to_end(channel, monkeypatch):
             assert "Palavras:" in prompt and "crate" in prompt  # tempos da fala e catálogo chegam ao storyboard
             return json.dumps(_storyboard(3))
         if "editor de qualidade" in prompt:
+            assert image is not None and image.is_file()
+            assert "s1 (" in prompt and "s3 (" in prompt
             return json.dumps({"score": 9, "issues": []})
         if "editor-chefe" in prompt:
             return json.dumps({"score": 9, "scores": {}, "issues": []})
@@ -140,6 +143,7 @@ def test_animated_short_end_to_end(channel, monkeypatch):
     ch = cfg["channels"][channel]
     ch["review"].update(require_approval=False, approve_before_render=False)
     ch["creative"].update(sound=False, review_script=True)
+    ch["models"]["critica"]["provider"] = "codex"
     config.save(cfg)
 
     job = db.create_job(channel, topic="uma caixa caindo da prateleira", kind="animado")

@@ -21,6 +21,7 @@ dependencies = [
 
 [project.scripts]
 shortpipeline = "shortpipeline.server:main"
+shortpipeline-sounds = "shortpipeline.sound_packs:main"
 
 [build-system]
 requires = ["hatchling"]

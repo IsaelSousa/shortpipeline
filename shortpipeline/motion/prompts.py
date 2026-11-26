@@ -29,9 +29,11 @@ Regras:
 - Cada cena mostra algo que acontece na tela: um personagem faz algo, um objeto se move, um número aparece.
   Escreva em "visual" o que se vê, de forma concreta (quem, onde, o que se move, o que aparece de informação).
 - O visual precisa ser possível com: cidade, rua, natureza, interior de casa ou estúdio neutro; pessoas
-  estilizadas que andam, correm, reagem, olham para cima, apontam, falam; objetos simples que caem, se movem,
+  estilizadas que andam, correm, reagem, olham para cima, mexem no celular, apontam, falam; objetos simples que caem, se movem,
   balançam; câmera que segue, aproxima, treme; velocímetro, régua de altura, cronômetro, contador, balões,
   setas, gráfico de barras.
+- Se uma ação visível pede som, inclua até dois efeitos pontuais em sfx (por exemplo, estalo metálico).
+  Use uma lista vazia quando a cena não precisar de efeito sonoro.
 - Use os fatos da pesquisa. Números só os da pesquisa, com arredondamento honesto.
 - Termine com uma conclusão que responde a pergunta, sem pedir like ou inscrição.
 - Nada de violência gráfica: mostre a física e a consequência, não ferimentos.
@@ -41,7 +43,8 @@ Responda SOMENTE com JSON válido, sem markdown:
   "description": "descrição de 2-3 linhas com hashtags",
   "tags": ["tag1", "tag2"],
   "cover_text": "2 a 5 palavras de impacto, com a palavra mais forte entre [colchetes]",
-  "scenes": [{{"narration": "texto narrado", "visual": "o que acontece na tela"}}]}}"""
+  "scenes": [{{"narration": "texto narrado", "visual": "o que acontece na tela",
+               "sfx": [{{"word": "palavra exata da fala no momento da ação", "sound": "som concreto em termos curtos"}}]}}]}}"""
 
 STORYBOARD_PROMPT = """Você é o diretor visual de um Short animado. Transforme o roteiro num JSON de composição que a
 engine desenha sozinha. Você só escolhe e configura componentes do catálogo: não escreva código.
@@ -63,10 +66,19 @@ MUNDO E UNIDADES
 REGRAS DE DIREÇÃO
 - Declare cada personagem uma vez em "characters" com aparência fixa (look) e use "ref" nas cenas.
 - Toda cena tem movimento visível: ação de personagem, ação de objeto ou movimento de câmera. Nada de cena parada.
-- Gancho: nos 2 primeiros segundos da cena 1 algo já acontece (o perigo começa, o objeto se solta, a pessoa reage),
-  não só uma apresentação do cenário. Varie o enquadramento entre as cenas quando ajudar a história.
+- Mostre a ação do gancho já no primeiro segundo. Abra em detalhe ou plano médio, com o assunto grande e legível.
+- Em cenas de 6 s ou mais, planeje mudanças de imagem conforme a narração traz informação nova (em geral a cada
+  2–3 s). Descreva isso com ações e, quando revelar algo novo, um movimento de câmera do tipo cut dentro da cena.
+  Um cut muda o enquadramento instantaneamente no start ou at_word. Pode usar x, height e zoom, ou target e frame_y.
+  Use plano aberto brevemente para dar contexto e a seguir volte para o detalhe. Evite atravessar o cenário num pan
+  quando quiser simplesmente trocar de assunto ou de altura.
+- Se o roteiro marcar um efeito sonoro numa palavra, sincronize a ação correspondente com a mesma palavra.
+- Reserve a faixa das legendas centrada em y=0.66 em todas as cenas. Posicione rostos, dados e detalhes da ação
+  fora dessa faixa. Prefira um único dado legível junto ao elemento que ele explica.
 - "studio" é só para números e comparações, e sempre com um objeto ou personagem grande (scale 1.5 a 3) animado
-  no centro. Prefira mostrar a explicação no próprio cenário da história.
+  no centro. Em temas técnicos, use time_of_day day e uma cor de fundo média (por exemplo, #314B64) com
+  contraste para o objeto. Use night para iluminação escura intencional. Alterne estúdio com outros cenários
+  quando a história mudar de lugar.
 - speed, distance e timer só enquanto algo está de fato caindo ou se movendo na cena; nunca mostrando 0.
 - No máximo 3 informativos por cena; textos curtos (callout até 60 caracteres). Sem texto fora dos informativos.
 - Quedas usam a ação "fall" (a engine calcula gravidade de verdade); o velocímetro "speed" e a régua "distance"
@@ -88,7 +100,7 @@ EXEMPLO DE UMA CENA (formato; não copie o conteúdo)
 Responda SOMENTE com o JSON completo:
 {{"schema_version": 1, "title": "...", "theme": {{"accent": "{accent}"}},
   "characters": [{{"id": "...", "description": "...", "voice": "narrator|female|male", "look": {{...}}}}],
-  "captions": {{"emphasis": ["palavras importantes para destacar"]}},
+  "captions": {{"fixed_position": true, "y": 0.66, "emphasis": ["palavras importantes para destacar"]}},
   "cover_time": segundo do vídeo para a capa,
   "scenes": [{{"id": "s1_...", "start": 0, "end": duração, "narration": "...", "enter": {{...}},
               "environment": {{...}}, "characters": [...], "objects": [...], "camera": {{...}},
@@ -114,6 +126,8 @@ números iguais aos fatos; final que responde a pergunta.
 Checagens automáticas já feitas:
 {checks}
 
+{visual}
+
 Storyboard (resumo por cena):
 {summary}
 
@@ -127,6 +141,9 @@ os ids dos personagens e objetos que continuam. Use só componentes do catálogo
 
 CATÁLOGO
 {catalog}
+
+Em mudanças bruscas de enquadramento dentro da cena, use câmera cut com start (ou at_word) e x/height/zoom
+ou target. Preserve a faixa de legendas (y=0.66) ao posicionar rostos e dados.
 
 PROBLEMA: {problem}
 COMO RESOLVER: {fix}

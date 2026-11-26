@@ -56,7 +56,7 @@ class CharacterDecl(_M):
 
 
 class CharAction(Timed):
-    type: Literal["walk", "run", "idle", "reaction", "look_up", "point", "talk", "shrug", "expression"]
+    type: Literal["walk", "run", "idle", "reaction", "look_up", "use_phone", "point", "talk", "shrug", "expression"]
     to_x: float | None = None
     style: Literal["surprised", "jump_back", "cover"] | None = None
     expression: Literal["neutral", "smile", "surprised", "scared", "worried"] | None = None
@@ -117,7 +117,7 @@ class CameraPoint(_M):
 
 
 class CameraMove(Timed):
-    type: Literal["pan", "zoom", "focus", "follow", "shake", "roll"]
+    type: Literal["cut", "pan", "zoom", "focus", "follow", "shake", "roll"]
     dur: float | None = Field(None, gt=0)
     x: float | None = None
     height: float | None = None
@@ -285,6 +285,7 @@ class Captions(_M):
     words: list[Word] = []
     size: int | None = Field(None, ge=48, le=160)
     y: float | None = Field(None, ge=0.15, le=0.8)
+    fixed_position: bool = False
     uppercase: bool = True
     highlight: str | None = None
 

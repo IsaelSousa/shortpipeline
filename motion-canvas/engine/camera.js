@@ -38,6 +38,14 @@ export function cameraAt(camera, t, resolve, W) {
     }
     if (m.type === 'roll') { roll = lerp(roll, m.angle ?? 0.05, p); continue; }
     const zoom = m.zoom ?? st.zoom;
+    if (m.type === 'cut') {
+      const target = center(m.target, m.frame_y ?? 0.45, zoom, m.start);
+      st = { x: m.x ?? target?.x ?? st.x, y: m.y ?? target?.y ?? st.y, zoom };
+      shakeX = 0;
+      shakeY = 0;
+      roll = 0;
+      continue;
+    }
     let to;
     if (m.type === 'follow' || m.type === 'focus') {
       // follow: acompanha o alvo enquanto dura e para onde ele estava no fim

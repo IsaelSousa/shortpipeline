@@ -152,6 +152,7 @@
     },
     "type": {
      "enum": [
+      "cut",
       "pan",
       "zoom",
       "focus",
@@ -420,6 +421,11 @@
      "default": null,
      "title": "Y"
     },
+    "fixed_position": {
+     "default": false,
+     "title": "Fixed Position",
+     "type": "boolean"
+    },
     "uppercase": {
      "default": true,
      "title": "Uppercase",
@@ -482,6 +488,7 @@
       "idle",
       "reaction",
       "look_up",
+      "use_phone",
       "point",
       "talk",
       "shrug",
@@ -2148,6 +2155,7 @@
     "words": [],
     "size": null,
     "y": null,
+    "fixed_position": false,
     "uppercase": true,
     "highlight": null
    }

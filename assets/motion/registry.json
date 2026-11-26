@@ -14,7 +14,7 @@
   ],
   "characters": {
     "rig": "person", "pivots": ["neck", "shoulder", "elbow", "hip", "knee"],
-    "actions": ["walk", "run", "idle", "reaction", "look_up", "point", "talk", "shrug", "expression"],
+    "actions": ["walk", "run", "idle", "reaction", "look_up", "use_phone", "point", "talk", "shrug", "expression"],
     "reaction_styles": ["surprised", "jump_back", "cover"],
     "expressions": ["neutral", "smile", "surprised", "scared", "worried"],
     "hair_styles": ["short", "long", "curly", "bun", "bald", "cap"],
@@ -26,7 +26,7 @@
     {"id": "room", "tags": ["casa", "sala", "interior", "escritório"], "params": ["wall", "floor", "window_x"]},
     {"id": "studio", "tags": ["fundo neutro", "explicação", "números"], "params": ["color"]}
   ],
-  "camera": ["pan", "zoom", "focus", "follow", "shake", "roll"],
+  "camera": ["cut", "pan", "zoom", "focus", "follow", "shake", "roll"],
   "overlays": ["speed", "distance", "timer", "counter", "callout", "highlight", "arrow", "title", "bars"],
   "effects": ["impact", "dust", "smoke", "speed_lines", "light", "flash", "wind", "rain"],
   "transitions": ["cut", "fade", "whip", "zoom", "slide"]

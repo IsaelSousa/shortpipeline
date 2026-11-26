@@ -93,6 +93,12 @@ function pose(state, t, ch, upm) {
     p.headTilt = lerp(p.headTilt, -0.35, into);
     p.look = { x: 0.3, y: -1 };
     p.expression = a.expression || 'worried';
+  } else if (a.type === 'use_phone') {
+    p.headTilt = lerp(p.headTilt, 0.24, into);
+    p.look = { x: 0.65, y: 0.8 };
+    p.shF = lerp(p.shF, 0.40, into);
+    p.elF = lerp(p.elF, 1.25, into);
+    p.phone = true;
   } else if (a.type === 'point') {
     p.shF = lerp(p.shF, a.up ? 2.4 : 1.6, into); p.elF = lerp(p.elF, 0.05, into);
     p.expression = a.expression || 'neutral';
@@ -219,10 +225,14 @@ export function drawCharacter(ctx, ch, t, upm) {
   const y = ch.y - p.hop * k;
   // sombra no chão (diminui no pulo)
   ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.18)';
-  ctx.beginPath();
-  ctx.ellipse(state.x, ch.y + 2 * k, 30 * k * (1 - clamp(p.hop / 30)), 6 * k, 0, 0, Math.PI * 2);
-  ctx.fill();
+  const shadowWidth = 30 * (1 - clamp(p.hop / 30));
+  ctx.translate(state.x, ch.y + 2 * k);
+  ctx.scale(k, k * 0.24);
+  const shadow = ctx.createRadialGradient(0, 0, 1, 0, 0, shadowWidth);
+  shadow.addColorStop(0, 'rgba(17,24,39,0.38)');
+  shadow.addColorStop(1, 'rgba(17,24,39,0)');
+  ctx.fillStyle = shadow;
+  ctx.fillRect(-shadowWidth, -shadowWidth, shadowWidth * 2, shadowWidth * 2);
   ctx.restore();
 
   ctx.save();
@@ -266,7 +276,20 @@ export function drawCharacter(ctx, ch, t, upm) {
   limb(ctx, 3, hipY, p.hipF, p.hipF - p.kneeF, P.thigh, P.shin, 13, 11, look.pants, shoe(look.shoes));
   ctx.save();
   ctx.rotate(p.lean);
-  limb(ctx, 5, shY + 4, p.shF, p.shF + p.elF, P.upper, P.fore, 9.5, 8.5, look.shirt, hand(look.skin));
+  const frontHand = hand(look.skin);
+  limb(ctx, 5, shY + 4, p.shF, p.shF + p.elF, P.upper, P.fore, 9.5, 8.5, look.shirt, (x, yy) => {
+    if (p.phone) {
+      ctx.save();
+      ctx.translate(x + 2, yy - 3);
+      ctx.rotate(-0.24);
+      ctx.fillStyle = '#172333';
+      roundRect(ctx, -3.8, -12, 8.5, 16, 2); ctx.fill();
+      ctx.fillStyle = '#87C6DA';
+      roundRect(ctx, -2.7, -10.5, 6.3, 11, 1); ctx.fill();
+      ctx.restore();
+    }
+    frontHand(x, yy);
+  });
   ctx.restore();
   ctx.restore();
   return { x: state.x, y: ch.y, top: ch.y - heightUnits, height: heightUnits };

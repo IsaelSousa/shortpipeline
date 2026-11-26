@@ -81,7 +81,10 @@ function building(ctx, x, w, floors, upm, color, seed, lit) {
   const fh = FLOOR_M * upm;
   const h = floors * fh;
   const r = rng(seed);
-  ctx.fillStyle = color;
+  const facade = ctx.createLinearGradient(x, -h, x + w, 0);
+  facade.addColorStop(0, shade(color, lit ? -0.43 : 0.07));
+  facade.addColorStop(1, shade(color, lit ? -0.62 : -0.16));
+  ctx.fillStyle = facade;
   ctx.fillRect(x, -h, w, h);
   // lateral em perspectiva (2.5D): uma faixa mais escura
   ctx.fillStyle = shade(color, -0.16);
@@ -104,8 +107,14 @@ function building(ctx, x, w, floors, upm, color, seed, lit) {
       const whh = fh * 0.5;
       ctx.fillStyle = PALETTE.frame;
       ctx.fillRect(wx - 5, wy - 5, ww + 10, whh + 10);
-      ctx.fillStyle = lit && r() > 0.55 ? PALETTE.windowLit : PALETTE.window;
+      const illuminated = lit && r() > 0.55;
+      const glass = ctx.createLinearGradient(wx, wy, wx, wy + whh);
+      glass.addColorStop(0, illuminated ? '#FFF1BA' : lit ? '#44556E' : '#B1D2E4');
+      glass.addColorStop(1, illuminated ? '#D9A65A' : lit ? '#202F45' : '#648DAA');
+      ctx.fillStyle = glass;
       ctx.fillRect(wx, wy, ww, whh);
+      ctx.fillStyle = 'rgba(18,35,54,0.2)';
+      ctx.fillRect(wx, wy, ww, whh * 0.08);
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
       ctx.beginPath(); ctx.moveTo(wx, wy + whh * 0.7); ctx.lineTo(wx + ww * 0.45, wy); ctx.lineTo(wx + ww * 0.65, wy); ctx.lineTo(wx, wy + whh); ctx.fill();
       if (r() > 0.82) { // ar-condicionado decorativo na fachada
@@ -223,13 +232,21 @@ function room(ctx, env, cam, W, H, t, upm) {
 function studio(ctx, env, cam, W, H, t, upm) {
   const E = 100 * upm;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  const g = ctx.createRadialGradient(W / 2, H * 0.45, 0, W / 2, H * 0.45, H * 0.8);
-  g.addColorStop(0, env.color || '#1E293B');
-  g.addColorStop(1, shade(env.color || '#1E293B', -0.55));
+  const night = env.time_of_day === 'night';
+  const color = /^#[0-9a-f]{6}$/i.test(env.color) ? env.color : '#1E293B';
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, W, H);
+  const g = ctx.createRadialGradient(W / 2, H * 0.34, 0, W / 2, H * 0.34, H * 0.9);
+  g.addColorStop(0, night ? 'transparent' : 'rgba(143,180,215,0.56)');
+  g.addColorStop(1, night ? 'rgba(0,0,0,0.55)' : 'rgba(93,124,162,0.34)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
   layerTransform(ctx, cam, 1, W, H);
-  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  if (!night) {
+    ctx.fillStyle = 'rgba(17,32,52,0.20)';
+    ctx.fillRect(-E, 0, 2 * E, E);
+  }
+  ctx.strokeStyle = night ? 'rgba(255,255,255,0.07)' : 'rgba(213,235,255,0.13)';
   ctx.lineWidth = 2;
   for (let x = -E; x <= E; x += upm) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x * 1.6, 8 * upm); ctx.stroke(); }
   for (let y = 0; y < 8; y += 0.8) { ctx.beginPath(); ctx.moveTo(-E, y * upm); ctx.lineTo(E, y * upm); ctx.stroke(); }

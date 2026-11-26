@@ -94,8 +94,10 @@ def _scenes_brief(c: Ctx) -> str:
     out = []
     for i, (sc, dur, words) in enumerate(zip(c.data["script"]["scenes"], c.data["durations"], timings)):
         said = " ".join(f"{w['text']}({w['start']:.2f})" for w in words)
+        cues = "; ".join(f"{sfx['word']} → {sfx['sound']}" for sfx in sc.get("sfx") or []
+                         if isinstance(sfx, dict) and sfx.get("word") and sfx.get("sound"))
         out.append(f"Cena {i + 1} — {dur:.2f} s\nNarração: {sc['narration']}\nVisual pedido: {sc.get('visual', '')}\n"
-                   f"Palavras: {said}")
+                   f"Palavras: {said}" + (f"\nEfeitos sonoros na fala: {cues}" if cues else ""))
     return "\n\n".join(out)
 
 
@@ -166,8 +168,9 @@ async def _render_preview(c: Ctx, only: set[str] | None = None) -> Path:
     silent = c.dir / "motion" / "preview-silent.mp4"
     await motion.concat(parts, silent)
     out = c.dir / "preview.mp4"
-    await render.ffmpeg(["-i", str(silent), "-i", str(c.dir / "narration.wav"), "-map", "0:v", "-map", "1:a",
-                         "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", str(out)])
+    mix = (c.data.get("sound") or {}).get("mix")
+    await render.mux_animation(silent, c.dir / "narration.wav", c.ch["video"], c.channel_id, out,
+                               total=sum(c.data["durations"]), sfx=Path(mix) if mix else None, music=None)
     c.save(preview=str(out))
     c.log(f"Preview pronto em {time.time() - t0:.0f} s ({p['width']}×{p['height']}, {p['fps']} fps)")
     return out
@@ -219,6 +222,27 @@ def _summary(video: schema.Video) -> str:
     return "\n".join(lines)
 
 
+async def _review_frames(video: schema.Video, preview: Path, output: Path) -> str:
+    """Amostra o começo e meio das cenas no próprio preview, na ordem da folha de contato."""
+    fps = motion.PREVIEW["fps"]
+    samples = {}
+    for sc in video.scenes:
+        duration = sc.end - sc.start
+        for offset in (min(0.6, duration * 0.25), duration * 0.55):
+            frame = round((sc.start + offset) * fps)
+            samples.setdefault(frame, sc.id)
+    frames = list(samples.items())
+    if len(frames) > 24:
+        frames = [frames[round(i * (len(frames) - 1) / 23)] for i in range(24)]
+    cols = min(4, len(frames))
+    rows = (len(frames) + cols - 1) // cols
+    select = "+".join(f"eq(n,{frame})" for frame, _ in frames)
+    sheet = f"select='{select}',scale=216:384,tile={cols}x{rows}:nb_frames={len(frames)}:padding=4"
+    await render.ffmpeg(["-i", str(preview), "-an", "-vf", sheet, "-frames:v", "1",
+                         "-update", "1", "-q:v", "3", str(output)], timeout=90)
+    return ", ".join(f"{sc} ({frame / fps:.2f}s)" for frame, sc in frames)
+
+
 async def stage_qualidade(c: Ctx) -> None:
     opts = _opts(c)
     video = schema.validate(load_storyboard(c))
@@ -229,10 +253,24 @@ async def stage_qualidade(c: Ctx) -> None:
         c.log(f"Checagem: cena {i['scene']}: {i['problem']}", "warn")
     report = {"auto": issues, "score": None, "ai": [], "fixed": []}
     if opts.get("ai_review", True):
+        image = None
+        visual = ""
+        model = c.ch["models"]["critica"]
+        if preview.is_file() and "codex" in (model.get("provider"), model.get("fallback_provider")):
+            sheet = c.dir / "motion" / "review-frames.jpg"
+            try:
+                order = await _review_frames(video, preview, sheet)
+                if sheet.is_file():
+                    image = sheet
+                    visual = ("Se houver imagem anexa, use os quadros para avaliar enquadramento, legibilidade e "
+                              "colisões de texto. A ordem é da esquerda para a direita, de cima para baixo: " + order)
+            except (ProviderError, TimeoutError) as e:
+                c.log(f"Quadros para revisão indisponíveis: {e}", "warn")
         try:
+            options = {"image": image} if image is not None else {}
             out = llm.extract_json(await c.text("critica", prompts.QA_PROMPT.format(
                 checks="\n".join(f"- {i['scene']}: {i['problem']}" for i in issues) or "(nada encontrado)",
-                summary=_summary(video))))
+                summary=_summary(video), visual=visual), **options))
             report["score"] = int(out.get("score") or 0)
             report["ai"] = [i for i in out.get("issues") or [] if isinstance(i, dict) and i.get("scene")][:3]
             c.log(f"Qualidade: nota {report['score']}/10" + (

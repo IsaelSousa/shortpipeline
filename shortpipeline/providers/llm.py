@@ -30,13 +30,15 @@ async def _claude(prompt: str, model: str, timeout: int, cfg: dict) -> str:
     return data.get("result", "")
 
 
-async def _codex(prompt: str, model: str, timeout: int, cfg: dict) -> str:
+async def _codex(prompt: str, model: str, timeout: int, cfg: dict, *, image: Path | None = None) -> str:
     with tempfile.TemporaryDirectory(prefix="sp-codex-") as wd:
         last = Path(wd) / "last.txt"
         args = [resolve_bin(cfg.get("bin") or "codex"), "exec", "--json", "-s", "read-only",
                 "--skip-git-repo-check", "--ephemeral", "-C", wd, "-o", str(last)]
         if model:
             args += ["-m", model]
+        if image is not None:
+            args += ["--image", str(image.resolve()), "--"]
         args.append("-")
         code, out, err = await run(args, stdin=(SYSTEM + "\n\n" + prompt).encode(), cwd=wd, timeout=timeout)
         text = last.read_text() if last.exists() else ""
@@ -65,12 +67,14 @@ async def _agy(prompt: str, model: str, timeout: int, cfg: dict) -> str:
 PROVIDERS = {"claude": _claude, "codex": _codex, "agy": _agy}
 
 
-async def generate(provider: str, model: str, prompt: str, *, timeout: int, providers_cfg: dict) -> str:
+async def generate(provider: str, model: str, prompt: str, *, timeout: int, providers_cfg: dict,
+                   image: Path | None = None) -> str:
     fn = PROVIDERS.get(provider)
     if not fn:
         raise ProviderError(f"Provedor de texto desconhecido: {provider}")
     try:
-        return await fn(prompt, model, timeout, providers_cfg.get(provider, {}))
+        options = {"image": image} if provider == "codex" and image is not None else {}
+        return await fn(prompt, model, timeout, providers_cfg.get(provider, {}), **options)
     except asyncio.TimeoutError:
         raise ProviderError(f"{provider} passou do tempo limite de {timeout}s")
 
