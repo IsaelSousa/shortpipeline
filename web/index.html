@@ -15,15 +15,17 @@
   <div class="shell">
     <aside class="sidebar">
       <a class="brand" href="#painel"><img src="/static/icon.svg" alt=""><div>ShortPipeline<small>Estúdio de Shorts</small></div></a>
-      <a class="nav-item" href="#painel" data-nav="painel"><svg class="i"><use href="#i-workflow"/></svg>Pipeline<span class="count" id="navCount"></span></a>
-      <a class="nav-item" href="#analytics" data-nav="analytics"><svg class="i"><use href="#i-chart"/></svg>Analytics</a>
-      <a class="nav-item" href="#canais" data-nav="canais"><svg class="i"><use href="#i-tv"/></svg>Canais</a>
-      <a class="nav-item" href="#provedores" data-nav="provedores"><svg class="i"><use href="#i-cpu"/></svg>Provedores</a>
+      <nav class="primary-nav" aria-label="Navegação principal">
+        <a class="nav-item" href="#painel" data-nav="painel"><svg class="i"><use href="#i-workflow"/></svg>Pipeline<span class="count" id="navCount"></span></a>
+        <a class="nav-item" href="#analytics" data-nav="analytics"><svg class="i"><use href="#i-chart"/></svg>Analytics</a>
+        <a class="nav-item" href="#canais" data-nav="canais"><svg class="i"><use href="#i-tv"/></svg>Canais</a>
+        <a class="nav-item" href="#provedores" data-nav="provedores"><svg class="i"><use href="#i-cpu"/></svg>Provedores</a>
+      </nav>
       <div class="nav-label nav-chan">Canais</div>
       <div id="navChannels" class="nav-chan"></div>
       <div class="sidebar-foot">
         <div class="worker-card" id="worker"></div>
-        <button class="btn ghost sm" id="themeBtn" style="justify-content:flex-start"><svg class="i sm"><use href="#i-moon"/></svg><span>Alternar tema</span></button>
+        <button class="btn ghost sm" id="themeBtn" aria-label="Alternar tema" style="justify-content:flex-start"><svg class="i sm"><use href="#i-moon"/></svg><span>Alternar tema</span></button>
       </div>
     </aside>
     <main class="main"><div class="page" id="app"></div></main>

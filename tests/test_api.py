@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from shortpipeline import db
+from shortpipeline import config, db
 from shortpipeline.server import app
 
 
@@ -64,3 +64,21 @@ def test_job_file_rejects_path_traversal(client, channel):
     job = db.create_job(channel, topic="arquivos")
     res = client.get(f"/api/jobs/{job['id']}/file/..%2F..%2Fconfig.json")
     assert res.status_code in (400, 403, 404)
+
+def test_job_download_uses_video_title(client, channel):
+    from urllib.parse import unquote
+
+    job = db.create_job(channel, topic="Pauta")
+    job_dir = config.JOBS_DIR / job["id"]
+    job_dir.mkdir(parents=True, exist_ok=True)
+    (job_dir / "final.mp4").write_bytes(b"video")
+    title = "O mistério da névoa de Plutão — e por que ficou visível nas fotos da New Horizons?"
+    db.update_job(job["id"], data={"script": {"title": title}})
+    url = f"/api/jobs/{job['id']}/file/final.mp4"
+
+    response = client.get(url + "?download=1")
+
+    assert response.status_code == 200
+    disposition = unquote(response.headers["content-disposition"])
+    assert disposition.endswith(title.rstrip("?") + ".mp4")
+    assert "content-disposition" not in client.get(url).headers

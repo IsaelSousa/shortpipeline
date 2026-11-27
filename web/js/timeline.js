@@ -219,7 +219,7 @@ async function renderTimeline(body, job, load, initialScene = timelineScene) {
         <p class="small muted" style="margin-bottom:12px">
           Ajuste o equilíbrio entre a voz da narração, a trilha sonora de fundo e os efeitos sonoros.
         </p>
-        <div class="fields" style="grid-template-columns:repeat(3, 1fr);gap:16px">
+        <div class="fields mixer-fields">
           <label class="field"><span>🎤 Narração (Voz)</span>
             <input type="range" id="mixVoice" min="0" max="2" step="0.05" value="${job.data?.audio_levels?.voice ?? 1.0}">
             <div class="small faint text-right" id="lblMixVoice">${Math.round((job.data?.audio_levels?.voice ?? 1.0) * 100)}%</div>

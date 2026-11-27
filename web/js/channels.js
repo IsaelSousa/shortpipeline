@@ -143,7 +143,7 @@ async function pageChannels(tab) {
         </div>
         <div class="row wrap" style="gap:24px;align-items:flex-end">
           ${field(ch, "creative.sonic_logo", "Assinatura sonora no loop", "switch")}
-          <div class="grow" style="min-width:280px">${field(ch, "creative.sonic_logo_prompt", "Som da assinatura (inglês)", "text", 'placeholder="Ex.: short bright two-note chime"', "Gerado uma vez no ElevenLabs e reaproveitado")}</div>
+          <div class="grow sonic-logo-field">${field(ch, "creative.sonic_logo_prompt", "Som da assinatura (inglês)", "text", 'placeholder="Ex.: short bright two-note chime"', "Gerado uma vez no ElevenLabs e reaproveitado")}</div>
         </div>
         <div class="row wrap" style="gap:24px;align-items:flex-end">
           ${field(ch, "creative.rating_meter", "Selo de nota no fim do vídeo", "switch")}

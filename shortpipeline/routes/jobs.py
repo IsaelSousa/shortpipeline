@@ -485,6 +485,12 @@ def job_file(job_id: str, name: str, download: bool = False):
         raise HTTPException(404)
     filename = None
     if download:
-        title = ((db.get_job(job_id) or {}).get("data", {}).get("script") or {}).get("title") or job_id
-        filename = re.sub(r"[^\w\- ]+", "", title).strip()[:60] + path.suffix
+        job = db.get_job(job_id) or {}
+        data = job.get("data", {})
+        title = ((data.get("script") or {}).get("title")
+                 or (data.get("source") or {}).get("title") or job.get("topic") or job_id)
+        stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', " ", title)
+        stem = " ".join(stem.split()).strip(". ")
+        stem = stem.encode("utf-8")[:240].decode("utf-8", errors="ignore").rstrip(". ")
+        filename = (stem or job_id) + path.suffix
     return FileResponse(path, filename=filename)

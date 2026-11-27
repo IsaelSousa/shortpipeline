@@ -111,11 +111,11 @@ async function pageJob(id) {
     app.innerHTML = `
       <div class="crumbs"><a href="#painel">Pipeline</a>${parent ? `${icon("chev", "sm")}<a href="#job/${parent.id}" class="ellipsis" style="max-width:240px">${esc(parent.topic || "Fonte")}</a>` : ""}${icon("chev", "sm")}<span class="ellipsis">${esc(title)}</span></div>
       <div class="detail-head">
-        <div class="grow" style="min-width:280px">
+        <div class="grow detail-title">
           <h1>${esc(title)}</h1>
           <div class="meta">${kindTag(kind)}${chanChip(job.channel)}${badge(job.status)}<span class="faint small">Criado ${ago(job.created_at)}</span><span class="faint mono">${job.id}</span></div>
         </div>
-        <div class="row">
+        <div class="row detail-actions">
           <select id="retryFrom" style="width:auto" title="Refazer a partir de">${order.map((s) => `<option value="${s}" ${s === firstPending ? "selected" : ""}>A partir de: ${META.stage_labels[s]}</option>`).join("")}</select>
           <button class="btn" id="retry">${icon("refresh")}Refazer</button>
           ${["running", "queued"].includes(job.status) ? `<button class="btn" id="cancel">${icon("x")}Cancelar</button>` : ""}
