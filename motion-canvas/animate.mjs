@@ -24,8 +24,12 @@ for (const [name, path] of Object.entries(spec.fonts || {})) {
   }
 }
 
-const browser = await chromium.launch(process.env.SHORTPIPELINE_CHROMIUM
-  ? { executablePath: process.env.SHORTPIPELINE_CHROMIUM } : {});
+const browser = await chromium.launch({
+  executablePath: process.env.SHORTPIPELINE_CHROMIUM || undefined,
+  args: spec.scenes.some((scene) => scene.layer_3d?.objects.length)
+    ? ['--use-gl=angle', '--use-angle=swiftshader']
+    : [],
+});
 let ffmpeg;
 try {
   const page = await browser.newPage();

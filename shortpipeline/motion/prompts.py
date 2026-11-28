@@ -31,7 +31,7 @@ Regras:
 - O visual precisa ser possível com: cidade, rua, natureza, interior de casa ou estúdio neutro; pessoas
   estilizadas que andam, correm, reagem, olham para cima, mexem no celular, apontam, falam; objetos simples que caem, se movem,
   balançam; câmera que segue, aproxima, treme; velocímetro, régua de altura, cronômetro, contador, balões,
-  setas, gráfico de barras.
+  setas, gráfico de barras. Formas geométricas em 3D podem girar, surgir na palavra certa ou ser vistas por uma câmera orbital.
 - Se uma ação visível pede som, inclua até dois efeitos pontuais em sfx (por exemplo, estalo metálico).
   Use uma lista vazia quando a cena não precisar de efeito sonoro.
 - Use os fatos da pesquisa. Números só os da pesquisa, com arredondamento honesto.

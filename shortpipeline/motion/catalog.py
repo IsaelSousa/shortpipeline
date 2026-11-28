@@ -41,6 +41,14 @@ def prompt_catalog() -> str:
                  f"acessórios {', '.join(ch['accessories'])}")
     lines.append(f"Câmera: {', '.join(r['camera'])}. Informativos: {', '.join(r['overlays'])}. "
                  f"Efeitos: {', '.join(r['effects'])}. Entradas de cena: {', '.join(r['transitions'])}.")
+    lines.append(
+        'Camada opcional "layer_3d" para mostrar forma, profundidade ou rotação de um objeto geométrico. '
+        'Shapes: box, sphere, cylinder, cone, torus. Use color em #RRGGBB, scale entre 0.1 e 4, '
+        'position [x,y,z] com origem no centro e y para cima, rotation [x,y,z] em graus, '
+        'spin [x,y,z] e orbit em graus por segundo. view_height ajusta o enquadramento (padrão 7). '
+        'reveal usa start ou at_word e dur. A câmera 3D é independente da câmera 2D. '
+        'Para informativos sobre o 3D, use posição de tela x/y.'
+    )
     return "\n".join(lines)
 
 

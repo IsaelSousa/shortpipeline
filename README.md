@@ -186,6 +186,8 @@ npx playwright install chromium   # o Chromium só renderiza os templates e os S
 npm run build                     # gera dist/scene.js (templates) e dist/engine.js (Shorts animados)
 ```
 
+**Three.js.** Nos Shorts animados, uma cena do storyboard pode usar `layer_3d` para desenhar formas 3D iluminadas sobre o cenário e atrás das legendas. Por exemplo, `"layer_3d": {"objects": [{"shape": "box", "spin": [0, 60, 0], "reveal": {"at_word": "caixa"}}]}` faz um cubo girar e surgir quando a narração diz “caixa”.
+
 **Real-ESRGAN.** Coloque o executável `realesrgan-ncnn-vulkan` no PATH ou em `data/tools/realesrgan/`, com `realesrgan-x4plus.param` e `realesrgan-x4plus.bin` na subpasta `models/` ao lado dele. Precisa de Vulkan. A ampliação é opcional e mantém a imagem original. [Distribuição oficial](https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.2.5.0)
 
 ## Conectar o YouTube (upload, rascunho e Analytics)

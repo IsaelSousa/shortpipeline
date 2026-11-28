@@ -196,6 +196,8 @@ def auto_checks(video: schema.Video, freezes: list[tuple[float, float]]) -> list
     issues = []
     for sc in video.scenes:
         moving = any(el.actions for el in [*sc.characters, *sc.objects]) or sc.camera.moves
+        if sc.layer_3d:
+            moving = moving or sc.layer_3d.orbit or any(any(obj.spin) or obj.reveal for obj in sc.layer_3d.objects)
         if not moving:
             issues.append({"scene": sc.id, "problem": "cena sem nenhum movimento (personagem, objeto ou câmera)"})
         for o in sc.overlays:
@@ -213,9 +215,10 @@ def _summary(video: schema.Video) -> str:
     lines = []
     for sc in video.scenes:
         acts = lambda els, key: ", ".join(f"{getattr(e, key)}({'/'.join(a.type for a in e.actions) or 'parado'})" for e in els)
+        shapes = ", ".join(obj.shape for obj in sc.layer_3d.objects) if sc.layer_3d else "-"
         lines.append(
             f"{sc.id} [{sc.end - sc.start:.1f}s, entra {sc.enter.type}] \"{sc.narration[:160]}\" | cenário {sc.environment.type}"
-            f" | pessoas {acts(sc.characters, 'ref') or '-'} | objetos {acts(sc.objects, 'id') or '-'}"
+            f" | pessoas {acts(sc.characters, 'ref') or '-'} | objetos {acts(sc.objects, 'id') or '-'} | 3D {shapes}"
             f" | câmera {', '.join(m.type + (f'({m.target})' if m.target else '') for m in sc.camera.moves) or 'fixa'}"
             f" | informativos {', '.join(o.type + (f':{o.text}' if o.text else '') for o in sc.overlays) or '-'}"
             f" | efeitos {', '.join(e.type for e in sc.effects) or '-'}")

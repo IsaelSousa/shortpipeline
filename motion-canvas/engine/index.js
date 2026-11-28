@@ -11,6 +11,7 @@ import { drawScreenEffect, drawWorldEffect, SCREEN_EFFECTS } from './effects.js'
 import { drawEnvironment, drawForeground, layerTransform } from './environment.js';
 import { ASSETS, drawObject, objectState } from './objects.js';
 import { drawOverlay, project } from './overlays.js';
+import { createThreeLayer } from './three-layer.js';
 import { clamp, ease, lerp } from './util.js';
 
 const DEFAULT_THEME = { accent: '#F97316', accent2: '#FDE047', locale: 'pt-BR' };
@@ -71,6 +72,7 @@ function normalize(spec) {
 let SPEC = null;
 let canvas = null;
 let ctx = null;
+let drawThreeLayer = null;
 
 async function loadFonts(fonts) {
   for (const [name, url] of Object.entries(fonts || {})) {
@@ -163,6 +165,10 @@ export function draw(T) {
   }
   drawForeground(ctx, sc.environment, cam, W, H, t, upm);
   ctx.filter = 'none';
+  if (sc.layer_3d) {
+    drawThreeLayer ??= createThreeLayer(W, H);
+    drawThreeLayer(ctx, sc.layer_3d, t, local);
+  }
 
   // tela: informativos, efeitos de tela e legendas (em coordenadas de design)
   ctx.setTransform(base, 0, 0, base, 0, 0);

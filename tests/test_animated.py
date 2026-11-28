@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 
+import cv2
 import pytest
 from conftest import needs_ffmpeg
 
@@ -64,6 +65,41 @@ def test_prepare_syncs_scenes_and_words_with_narration():
     assert spec["scenes"][0]["objects"][0]["actions"][0]["start"] == 0.7
     assert spec["captions"]["words"][-1] == {"text": "Fim.", "start": 1.6, "end": 1.9}
     assert warnings and "nada" in warnings[0]
+
+
+@needs_ffmpeg
+@needs_engine
+def test_three_layer_reveals_an_animated_shape_at_the_spoken_word(tmp_path):
+    video = schema.validate({"captions": {"enabled": False}, "scenes": [{
+        "id": "three", "start": 0, "end": 2, "environment": {"type": "studio", "color": "#253347"},
+        "layer_3d": {"objects": [{
+            "shape": "box", "color": "#E57631", "spin": [0, 90, 0],
+            "reveal": {"at_word": "caixa", "dur": 0.2},
+        }]},
+    }]})
+    assert not animated.auto_checks(video, [])
+    spec, warnings = motion.prepare(video.model_dump(exclude_none=True),
+                                    [[{"text": "Caixa!", "start": 0.5, "end": 0.7}]], [2])
+    assert not warnings
+    reveal = spec["scenes"][0]["layer_3d"]["objects"][0]["reveal"]
+    assert reveal["start"] == 0.5
+    clips = asyncio.run(motion.render_scenes(spec, tmp_path, width=180, height=320, fps=12))
+    capture = cv2.VideoCapture(str(clips[0]))
+
+    def orange_pixels(index):
+        capture.set(cv2.CAP_PROP_POS_FRAMES, index)
+        ok, image = capture.read()
+        assert ok
+        blue, green, red = (channel.astype(int) for channel in cv2.split(image))
+        return ((red > green + 25) & (green > blue + 15)).sum()
+
+    try:
+        assert orange_pixels(4) == 0
+        first_view, second_view = orange_pixels(10), orange_pixels(15)
+        assert min(first_view, second_view) > 500
+        assert abs(first_view - second_view) > 100
+    finally:
+        capture.release()
 
 
 def test_auto_checks_flag_static_scenes_and_unshown_numbers():

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, ValidationError, model_validator
 
 SCHEMA_VERSION = 1
 
@@ -233,6 +233,28 @@ class TimeWarp(_M):
     rate: float = Field(gt=0.05, le=1)
 
 
+class Reveal3D(_M):
+    start: float = Field(0, ge=0)
+    dur: float = Field(0.45, gt=0, le=5)
+    at_word: str | None = None
+
+
+class Shape3D(_M):
+    shape: Literal["box", "sphere", "cylinder", "cone", "torus"]
+    color: str = Field("#38BDF8", pattern=r"^#[0-9a-fA-F]{6}$")
+    position: tuple[FiniteFloat, FiniteFloat, FiniteFloat] = (0, 0, 0)
+    scale: float = Field(1, ge=0.1, le=4)
+    rotation: tuple[FiniteFloat, FiniteFloat, FiniteFloat] = (0, 0, 0)
+    spin: tuple[FiniteFloat, FiniteFloat, FiniteFloat] = (0, 0, 0)
+    reveal: Reveal3D | None = None
+
+
+class Layer3D(_M):
+    objects: list[Shape3D] = Field(min_length=1, max_length=8)
+    orbit: float = Field(0, ge=-120, le=120)
+    view_height: float = Field(7, ge=3, le=16)
+
+
 class Scene(_M):
     id: str = Field(pattern=r"^[a-z0-9_]{1,40}$")
     start: float = Field(ge=0)
@@ -242,6 +264,7 @@ class Scene(_M):
     environment: Environment = Environment()
     characters: list[SceneCharacter] = []
     objects: list[SceneObject] = []
+    layer_3d: Layer3D | None = None
     camera: Camera = Camera()
     overlays: list[Overlay] = Field([], max_length=6)
     effects: list[Effect] = Field([], max_length=8)
@@ -376,7 +399,8 @@ def field_guide() -> str:
               "enter": Enter, "scene.characters[]": SceneCharacter, "character action": CharAction,
               "scene.objects[]": SceneObject, "object action": ObjAction, "camera.start": CameraPoint,
               "camera move": CameraMove, "overlay": Overlay, "bars item": BarItem, "effect": Effect,
-              "time_warp": TimeWarp}
+              "time_warp": TimeWarp, "scene.layer_3d": Layer3D, "layer_3d.objects[]": Shape3D,
+              "layer_3d.objects[].reveal": Reveal3D}
     lines = []
     for name, model in models.items():
         fields = [(f.alias or k) for k, f in model.model_fields.items()]

@@ -1053,6 +1053,39 @@
    "title": "HeroBuilding",
    "type": "object"
   },
+  "Layer3D": {
+   "additionalProperties": false,
+   "properties": {
+    "objects": {
+     "items": {
+      "$ref": "#/$defs/Shape3D"
+     },
+     "maxItems": 8,
+     "minItems": 1,
+     "title": "Objects",
+     "type": "array"
+    },
+    "orbit": {
+     "default": 0,
+     "maximum": 120,
+     "minimum": -120,
+     "title": "Orbit",
+     "type": "number"
+    },
+    "view_height": {
+     "default": 7,
+     "maximum": 16,
+     "minimum": 3,
+     "title": "View Height",
+     "type": "number"
+    }
+   },
+   "required": [
+    "objects"
+   ],
+   "title": "Layer3D",
+   "type": "object"
+  },
   "Look": {
    "additionalProperties": false,
    "properties": {
@@ -1708,6 +1741,38 @@
    "title": "Overlay",
    "type": "object"
   },
+  "Reveal3D": {
+   "additionalProperties": false,
+   "properties": {
+    "start": {
+     "default": 0,
+     "minimum": 0,
+     "title": "Start",
+     "type": "number"
+    },
+    "dur": {
+     "default": 0.45,
+     "exclusiveMinimum": 0,
+     "maximum": 5,
+     "title": "Dur",
+     "type": "number"
+    },
+    "at_word": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "At Word"
+    }
+   },
+   "title": "Reveal3D",
+   "type": "object"
+  },
   "Scene": {
    "additionalProperties": false,
    "properties": {
@@ -1771,6 +1836,17 @@
      },
      "title": "Objects",
      "type": "array"
+    },
+    "layer_3d": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Layer3D"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
     },
     "camera": {
      "$ref": "#/$defs/Camera",
@@ -2008,6 +2084,117 @@
     "asset"
    ],
    "title": "SceneObject",
+   "type": "object"
+  },
+  "Shape3D": {
+   "additionalProperties": false,
+   "properties": {
+    "shape": {
+     "enum": [
+      "box",
+      "sphere",
+      "cylinder",
+      "cone",
+      "torus"
+     ],
+     "title": "Shape",
+     "type": "string"
+    },
+    "color": {
+     "default": "#38BDF8",
+     "pattern": "^#[0-9a-fA-F]{6}$",
+     "title": "Color",
+     "type": "string"
+    },
+    "position": {
+     "default": [
+      0,
+      0,
+      0
+     ],
+     "maxItems": 3,
+     "minItems": 3,
+     "prefixItems": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "number"
+      },
+      {
+       "type": "number"
+      }
+     ],
+     "title": "Position",
+     "type": "array"
+    },
+    "scale": {
+     "default": 1,
+     "maximum": 4,
+     "minimum": 0.1,
+     "title": "Scale",
+     "type": "number"
+    },
+    "rotation": {
+     "default": [
+      0,
+      0,
+      0
+     ],
+     "maxItems": 3,
+     "minItems": 3,
+     "prefixItems": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "number"
+      },
+      {
+       "type": "number"
+      }
+     ],
+     "title": "Rotation",
+     "type": "array"
+    },
+    "spin": {
+     "default": [
+      0,
+      0,
+      0
+     ],
+     "maxItems": 3,
+     "minItems": 3,
+     "prefixItems": [
+      {
+       "type": "number"
+      },
+      {
+       "type": "number"
+      },
+      {
+       "type": "number"
+      }
+     ],
+     "title": "Spin",
+     "type": "array"
+    },
+    "reveal": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Reveal3D"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    }
+   },
+   "required": [
+    "shape"
+   ],
+   "title": "Shape3D",
    "type": "object"
   },
   "Theme": {

@@ -66,6 +66,9 @@ def prepare(data: dict, scene_words: list[list[dict]], durations: list[float]) -
             _resolve(o, words, sc["id"], warnings, dur)
         for e in sc.get("effects") or []:
             _resolve(e, words, sc["id"], warnings, dur, key="at")
+        for obj in (sc.get("layer_3d") or {}).get("objects", []):
+            if (reveal := obj.get("reveal")) is not None:
+                _resolve(reveal, words, sc["id"], warnings, dur)
         words_all += [{"text": w["text"], "start": round(w["start"] + offset, 3), "end": round(w["end"] + offset, 3)}
                       for w in words]
         offset += dur
